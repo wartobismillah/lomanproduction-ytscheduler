@@ -412,7 +412,15 @@ async function fetchVideos(){
     A.videos=d2.items||[];
     A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
     saveSched();A.step='dashboard';render();
-  }catch(e){toast('Gagal: '+e.message,'err');A.step='setup';render();}
+  }catch(e){
+    var msg=e.message||'Unknown error';
+    // Cek error umum
+    if(msg.includes('403'))msg='Akses ditolak (403) — pastikan YouTube Data API v3 sudah diaktifkan di Google Cloud Console';
+    else if(msg.includes('401'))msg='Token tidak valid (401) — coba Sign In ulang';
+    else if(msg.includes('quota'))msg='Quota API habis — coba lagi besok atau gunakan Client ID lain';
+    toast('Gagal memuat video: '+msg,'err');
+    A.step='setup';render();
+  }
 }
 async function apiSet(videoId,publishAt){
   var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
@@ -545,7 +553,14 @@ function delChannel(id){
   render();toast('Channel dihapus','inf');
 }
 function getDrafts(){
-  return A.videos.filter(function(v){var s=v.status||{};return s.privacyStatus==='private'||s.privacyStatus==='unlisted';});
+  // Tampilkan: private, unlisted, ATAU video yg uploadStatus-nya belum 'processed'
+  return A.videos.filter(function(v){
+    var s=v.status||{};
+    var isPrivate=s.privacyStatus==='private';
+    var isUnlisted=s.privacyStatus==='unlisted';
+    var isNotProcessed=s.uploadStatus&&s.uploadStatus!=='processed';
+    return isPrivate||isUnlisted||isNotProcessed;
+  });
 }
 function getFiltered(){
   var d=getDrafts();
@@ -605,7 +620,13 @@ async function saveConfigToGitHub(){
     var chLines=channels.map(function(c){
       return "    { name: '"+c.name.replace(/'/g,"\\'")+"', color: '"+c.color+"' }";
     }).join(',\n');
-    var newConfig="var CONFIG = {\n  clientId: '"+clientId+"',\n\n  channels: [\n"+chLines+"\n  ]\n};";
+    var allCids=getClientIds();
+    if(clientId&&!allCids.includes(clientId))allCids.unshift(clientId);
+    if(!allCids.length)allCids=[''];
+    var cidLines=allCids.concat(['','']).slice(0,3).map(function(c,i){
+      return "    '"+c+"',   // Client ID #"+(i+1)+(i===0?' (utama)':' (cadangan)');
+    }).join('\n');
+    var newConfig="var CONFIG = {\n  clientIds: [\n"+cidLines+"\n  ],\n\n  channels: [\n"+chLines+"\n  ]\n};";
 
     var newContent=current.replace(/var CONFIG = \{[\s\S]*?\};/,newConfig);
     if(newContent===current)throw new Error('Tidak bisa menemukan blok CONFIG di file. Pastikan filenya tidak diubah manual.');
@@ -663,7 +684,7 @@ function renderCfgModal(){
     '</div>'+
 
     '<div class="fg"><label>Google OAuth Client ID</label>'+
-      '<input id="cfg-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(CONFIG.clientId)+'"></div>'+
+      '<input id="cfg-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(getClientIds()[0]||'')+'"></div>'+
 
     '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Daftar Channel</div>'+
     '<div id="ch-cfg-list">'+chRows+'</div>'+
@@ -746,7 +767,19 @@ function renderChBar(){
 
 function renderSetup(){
   var h=renderChBar();
-  if(A.channels.length){h+='<div class="empty"><p style="font-size:13px">Pilih channel di atas atau tambah channel baru.</p></div>';return h;}
+  if(A.channels.length){
+    // Tampilkan tombol Sign In untuk tiap channel
+    var btns=A.channels.map(function(ch){
+      return '<button class="btn btn-red" style="font-size:13px" onclick="switchCh(window._chm[\''+ch.id+'\'])">'+
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:'+esc(ch.color)+';margin-right:6px;vertical-align:middle"></span>'+
+        'Masuk sebagai <b>'+esc(ch.name)+'</b></button>';
+    }).join('');
+    h+='<div style="text-align:center;padding:2rem 1rem">'+
+      '<p style="font-size:13px;color:var(--t2);margin-bottom:1rem">Pilih channel untuk mulai:</p>'+
+      '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;max-width:300px;margin:0 auto">'+btns+'</div>'+
+    '</div>';
+    return h;
+  }
   // No config yet — show two paths
   h+='<div class="setup-wrap"><div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">'+
   '<h2>🎬 Setup YouTube Scheduler</h2>'+
@@ -802,7 +835,13 @@ function renderPerVideo(){
     '<button class="chip'+(A.filter==='scheduled'?' active':'')+'" onclick="A.filter=\'scheduled\';render()">✓ Terjadwal ('+sc+')</button>'+
     '<button class="chip'+(A.filter==='unscheduled'?' active':'')+'" onclick="A.filter=\'unscheduled\';render()">Belum ('+(d.length-sc)+')</button>'+
   '</div>';
-  if(!filtered.length)return h+'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div><p style="font-size:13px">Tidak ada video.</p></div>';
+  if(!filtered.length){
+    var allCount=A.videos.length;
+    return h+'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div>'+
+      '<p style="font-size:13px">Tidak ada video draft ditemukan.</p>'+
+      (allCount>0?'<p style="font-size:12px;color:var(--t3);margin-top:6px">'+allCount+' video terdeteksi dari channel, tapi semua berstatus public.<br>Pastikan video sudah diupload sebagai <b>Private</b> di YouTube Studio.</p>':'<p style="font-size:12px;color:var(--t3);margin-top:6px">Tidak ada video di channel ini.</p>')+
+    '</div>';
+  }
   h+='<div class="vlist vscroll">';
   filtered.forEach(function(v){
     var sched=A.scheduled[v.id],isOpen=A.openPanel===v.id;
