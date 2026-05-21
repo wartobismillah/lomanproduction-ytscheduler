@@ -5,900 +5,770 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTube Multi-Channel Scheduler</title>
 <style>
-  /* ─── Reset & Base ─── */
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --red: #FF0000;
-    --red-dark: #CC0000;
-    --red-light: #FF00001a;
-    --bg: #FAFAFA;
-    --bg-card: #FFFFFF;
-    --bg-hover: #F5F5F5;
-    --bg-secondary: #F0F0F0;
-    --text: #111111;
-    --text-2: #555555;
-    --text-3: #888888;
-    --border: #E0E0E0;
-    --border-strong: #C8C8C8;
-    --green: #1A7F3C;
-    --green-bg: #E8F5ED;
-    --orange: #B45309;
-    --orange-bg: #FEF3C7;
-    --blue: #1A56DB;
-    --blue-bg: #EBF5FF;
-    --radius: 10px;
-    --radius-sm: 6px;
-    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    color: var(--text);
-    background: var(--bg);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0F0F0F;
-      --bg-card: #1A1A1A;
-      --bg-hover: #252525;
-      --bg-secondary: #2A2A2A;
-      --text: #F1F1F1;
-      --text-2: #AAAAAA;
-      --text-3: #666666;
-      --border: #303030;
-      --border-strong: #404040;
-      --green: #4ADE80;
-      --green-bg: #052E16;
-      --orange: #FBBF24;
-      --orange-bg: #1C1300;
-      --blue: #60A5FA;
-      --blue-bg: #1E3A5F;
-    }
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#FF0000;--red-d:#CC0000;--red-bg:#FFF0F0;--red-b:#FFBBBB;
+  --bg:#F7F7F7;--card:#FFF;--hover:#F2F2F2;
+  --text:#111;--t2:#555;--t3:#999;
+  --border:#E2E2E2;--border2:#C8C8C8;
+  --green:#1A7F3C;--green-bg:#E8F5ED;--green-b:#A3D9B1;
+  --orange:#B45309;--orange-bg:#FEF3C7;--orange-b:#FCD34D;
+  --blue:#1A56DB;--blue-bg:#EBF5FF;--blue-b:#93C5FD;
+  --purple:#7C3AED;--purple-bg:#F5F3FF;
+  --r:10px;--r2:7px;--r3:5px;
+  --sh:0 1px 3px rgba(0,0,0,.08);--sh2:0 4px 20px rgba(0,0,0,.13);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14px;color:var(--text);background:var(--bg);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0F0F0F;--card:#1C1C1C;--hover:#272727;
+  --text:#F1F1F1;--t2:#AAA;--t3:#666;
+  --border:#2E2E2E;--border2:#444;
+  --green:#4ADE80;--green-bg:#052E16;--green-b:#166534;
+  --orange:#FBBF24;--orange-bg:#1C1300;--orange-b:#92400E;
+  --blue:#60A5FA;--blue-bg:#1E3A5F;--blue-b:#1D4ED8;
+  --purple:#A78BFA;--purple-bg:#2E1065;
+  --red-bg:#2D0000;--red-b:#7F0000;
+}}
+.app{max-width:980px;margin:0 auto;padding:0 1rem 4rem}
 
-  /* ─── Layout ─── */
-  .app { max-width: 980px; margin: 0 auto; padding: 0 1rem 3rem; min-height: 100vh; }
-  
-  /* ─── Header ─── */
-  .header {
-    display: flex; align-items: center; gap: 12px;
-    padding: 1rem 0; margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; background: var(--bg); z-index: 10;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-  .logo-icon { width: 36px; height: 36px; background: var(--red); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .logo-icon svg { width: 20px; height: 20px; fill: white; }
-  .logo-text h1 { font-size: 17px; font-weight: 700; color: var(--text); }
-  .logo-text p { font-size: 11px; color: var(--text-3); }
-  .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-  
-  /* ─── Channel Switcher ─── */
-  .channel-bar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 14px; background: var(--bg-card);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    margin-bottom: 1.5rem; flex-wrap: wrap;
-  }
-  .channel-bar-label { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
-  .channel-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-  .channel-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
-    border: 1px solid var(--border); cursor: pointer;
-    background: transparent; color: var(--text-2);
-    transition: all 0.15s; white-space: nowrap;
-  }
-  .channel-chip:hover { border-color: var(--red); color: var(--red); }
-  .channel-chip.active { background: var(--red); border-color: var(--red); color: white; }
-  .channel-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
-  .channel-chip-del { font-size: 14px; line-height: 1; opacity: 0.6; margin-left: 2px; }
-  .channel-chip-del:hover { opacity: 1; }
-  .btn-add-channel { padding: 5px 10px; font-size: 12px; border-radius: 20px; border: 1px dashed var(--border-strong); cursor: pointer; background: transparent; color: var(--text-3); transition: all 0.15s; }
-  .btn-add-channel:hover { border-color: var(--red); color: var(--red); }
+/* ─ Header ─ */
+.header{display:flex;align-items:center;gap:10px;padding:.9rem 0;margin-bottom:1.25rem;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:30}
+.logo-box{width:34px;height:34px;background:var(--red);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-box svg{width:20px;height:20px;fill:#fff}
+.logo-text h1{font-size:16px;font-weight:700}
+.logo-text p{font-size:11px;color:var(--t3)}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:6px}
 
-  /* ─── Buttons ─── */
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 8px 16px; font-size: 13px; font-weight: 500;
-    border-radius: var(--radius-sm); border: 1px solid var(--border);
-    background: var(--bg-card); color: var(--text);
-    cursor: pointer; transition: all 0.15s; white-space: nowrap;
-    box-shadow: var(--shadow);
-  }
-  .btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
-  .btn:active { transform: scale(0.98); }
-  .btn-red { background: var(--red); border-color: var(--red-dark); color: white; box-shadow: none; }
-  .btn-red:hover { background: var(--red-dark); border-color: var(--red-dark); }
-  .btn-sm { padding: 5px 11px; font-size: 12px; }
-  .btn-xs { padding: 3px 8px; font-size: 11px; }
-  .btn-ghost { border-color: transparent; box-shadow: none; background: transparent; }
-  .btn-ghost:hover { background: var(--bg-hover); border-color: var(--border); }
-  .btn-danger { background: #FEE2E2; border-color: #FCA5A5; color: #991B1B; box-shadow: none; }
+/* ─ Buttons ─ */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;font-size:13px;font-weight:500;border-radius:var(--r2);border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;transition:all .15s;white-space:nowrap;box-shadow:var(--sh)}
+.btn:hover{background:var(--hover);border-color:var(--border2)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-red{background:var(--red);border-color:var(--red-d);color:#fff;box-shadow:none}
+.btn-red:hover{background:var(--red-d)}
+.btn-green{background:var(--green-bg);border-color:var(--green-b);color:var(--green)}
+.btn-green:hover{filter:brightness(.93)}
+.btn-sm{padding:5px 11px;font-size:12px}
+.btn-xs{padding:4px 9px;font-size:11px;font-weight:600}
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none}
+.btn-ghost:hover{background:var(--hover);border-color:var(--border)}
 
-  /* ─── Cards ─── */
-  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow); }
-  
-  /* ─── Stats ─── */
-  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
-  .stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
-  .stat-num { font-size: 26px; font-weight: 700; line-height: 1; }
-  .stat-label { font-size: 11px; color: var(--text-3); margin-top: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
-  .stat-num.green { color: var(--green); }
-  .stat-num.orange { color: var(--orange); }
-  .stat-num.blue { color: var(--blue); }
+/* ─ Channel bar ─ */
+.ch-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-bottom:1.25rem;flex-wrap:wrap;box-shadow:var(--sh)}
+.ch-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t3);white-space:nowrap}
+.ch-chips{display:flex;gap:5px;flex-wrap:wrap;flex:1}
+.ch-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:600;border:1.5px solid var(--border);cursor:pointer;background:transparent;color:var(--t2);transition:all .15s;white-space:nowrap}
+.ch-chip:hover{border-color:var(--red);color:var(--red)}
+.ch-chip.active{background:var(--red);border-color:var(--red-d);color:#fff}
+.ch-del{font-size:15px;line-height:1;opacity:.5;padding:0 2px}
+.ch-del:hover{opacity:1}
+.btn-add-ch{padding:5px 10px;font-size:12px;border-radius:20px;border:1.5px dashed var(--border2);cursor:pointer;background:transparent;color:var(--t3);transition:all .15s}
+.btn-add-ch:hover{border-color:var(--red);color:var(--red)}
 
-  /* ─── Tabs ─── */
-  .tabs { display: flex; gap: 2px; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
-  .tab { padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--red); border-bottom-color: var(--red); }
+/* ─ Stats ─ */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1.25rem}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px;box-shadow:var(--sh)}
+.stat-n{font-size:26px;font-weight:800;line-height:1}
+.stat-l{font-size:10px;color:var(--t3);margin-top:3px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.c-green{color:var(--green)}.c-orange{color:var(--orange)}.c-blue{color:var(--blue)}.c-purple{color:var(--purple)}
 
-  /* ─── Filter chips ─── */
-  .filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
-  .chip { padding: 4px 12px; font-size: 12px; border-radius: 20px; border: 1px solid var(--border); cursor: pointer; background: transparent; color: var(--text-2); transition: all 0.15s; font-weight: 500; }
-  .chip:hover { border-color: var(--red); color: var(--red); }
-  .chip.active { background: var(--red-light); border-color: var(--red); color: var(--red); }
+/* ─ Tabs ─ */
+.tabs{display:flex;margin-bottom:1.25rem;border-bottom:1px solid var(--border)}
+.tab{padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;color:var(--t3);border-bottom:2.5px solid transparent;margin-bottom:-1px;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--red);border-bottom-color:var(--red)}
 
-  /* ─── Video List ─── */
-  .video-list { display: flex; flex-direction: column; gap: 6px; }
-  .video-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 14px; background: var(--bg-card);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    transition: all 0.15s;
-  }
-  .video-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
-  .video-row.scheduled { border-left: 3px solid var(--green); }
-  .thumb-wrap { flex-shrink: 0; position: relative; }
-  .thumb { width: 88px; height: 50px; object-fit: cover; border-radius: 5px; background: var(--bg-secondary); display: block; }
-  .thumb-placeholder { width: 88px; height: 50px; border-radius: 5px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 20px; flex-shrink: 0; }
-  .video-info { flex: 1; min-width: 0; }
-  .video-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); line-height: 1.3; }
-  .video-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; }
-  .badge-draft { background: var(--bg-secondary); color: var(--text-3); }
-  .badge-scheduled { background: var(--green-bg); color: var(--green); }
-  .badge-soon { background: var(--orange-bg); color: var(--orange); }
-  .video-actions { display: flex; gap: 5px; flex-shrink: 0; align-items: center; }
-  .sched-date { font-size: 11px; color: var(--green); font-weight: 600; white-space: nowrap; max-width: 130px; }
+/* ─ Filters ─ */
+.filters{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.chip{padding:5px 12px;font-size:12px;border-radius:20px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--t2);transition:all .15s;font-weight:500}
+.chip:hover{border-color:var(--red);color:var(--red)}
+.chip.active{background:var(--red-bg);border-color:var(--red);color:var(--red);font-weight:700}
 
-  /* ─── Calendar ─── */
-  .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .cal-title { font-size: 15px; font-weight: 700; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-  .cal-head { text-align: center; font-size: 10px; font-weight: 700; color: var(--text-3); padding: 4px 0; text-transform: uppercase; letter-spacing: 0.06em; }
-  .cal-cell { min-height: 64px; padding: 4px 5px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); font-size: 11px; }
-  .cal-cell.dim { background: var(--bg-secondary); opacity: 0.45; }
-  .cal-cell.today { border-color: var(--red); }
-  .cal-cell.today .cal-num { background: var(--red); color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
-  .cal-num { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 2px; }
-  .cal-event { background: var(--green-bg); color: var(--green); border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; border-left: 2px solid var(--green); cursor: pointer; }
-  .cal-event:hover { filter: brightness(0.9); }
-  .cal-more { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+/* ─ Video row (per-video tab) ─ */
+.vlist{display:flex;flex-direction:column;gap:6px}
+.vrow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:11px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--r2);transition:all .15s}
+.vrow:hover{border-color:var(--border2);box-shadow:var(--sh)}
+.vrow.scheduled{border-left:3px solid var(--green)}
+.vrow.open{border-color:var(--red);border-bottom-left-radius:0;border-bottom-right-radius:0}
+.thumb{width:88px;height:50px;object-fit:cover;border-radius:5px;display:block;background:var(--hover);flex-shrink:0}
+.thumb-ph{width:88px;height:50px;border-radius:5px;background:var(--hover);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.vtitle{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.vmeta{font-size:11px;color:var(--t3);margin-top:3px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700}
+.b-draft{background:var(--hover);color:var(--t3)}
+.b-sched{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b)}
+.b-soon{background:var(--orange-bg);color:var(--orange);border:1px solid var(--orange-b)}
+.vactions{display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0}
+.btn-unsched{padding:3px 8px;font-size:11px;border-radius:4px;border:1px solid var(--border2);color:var(--t2);background:transparent;cursor:pointer;transition:all .15s;font-weight:600}
+.btn-unsched:hover{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B}
 
-  /* ─── Bulk mode ─── */
-  .bulk-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--blue-bg); border: 1px solid var(--blue); border-radius: var(--radius-sm); margin-bottom: 10px; }
-  .bulk-bar span { font-size: 13px; font-weight: 500; color: var(--blue); flex: 1; }
-  .video-row .row-check { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--red); }
+/* Inline panel */
+.ipanel{background:var(--red-bg);border:1px solid var(--red-b);border-top:none;border-bottom-left-radius:var(--r2);border-bottom-right-radius:var(--r2);padding:12px 14px;display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.ipanel label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-bottom:4px}
+.ipanel input[type=date],.ipanel input[type=time]{padding:7px 10px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)}
+.ipanel input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(255,0,0,.1)}
+.tz-hint{font-size:10px;color:var(--t3);margin-top:3px}
 
-  /* ─── Modal ─── */
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(2px); }
-  .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 420px; max-width: calc(100vw - 32px); box-shadow: var(--shadow-md); }
-  .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-  .modal .subtitle { font-size: 12px; color: var(--text-3); margin-bottom: 1.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-  .form-group { margin-bottom: 10px; }
-  .form-group label { display: block; font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
-  .form-group input, .form-group select {
-    width: 100%; padding: 8px 10px; font-size: 13px;
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    background: var(--bg); color: var(--text); transition: border-color 0.15s;
-  }
-  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-light); }
-  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1.25rem; }
-  .info-box { background: var(--orange-bg); border: 1px solid; border-color: var(--orange); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 11px; color: var(--orange); margin-bottom: 10px; line-height: 1.5; }
+/* ─ BULK SCHEDULER ─ */
+.bulk-wrap{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+@media(max-width:700px){.bulk-wrap{grid-template-columns:1fr}}
 
-  /* ─── Add Channel Modal ─── */
-  .add-channel-modal .color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-  .color-swatch { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.1s; }
-  .color-swatch:hover { transform: scale(1.15); }
-  .color-swatch.selected { border-color: var(--text); }
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
+.panel-body{padding:14px 16px}
 
-  /* ─── Setup ─── */
-  .setup-wrap { max-width: 540px; margin: 2rem auto; }
-  .setup-wrap .card { padding: 2rem; }
-  .setup-wrap h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-  .setup-wrap > .card > p { font-size: 13px; color: var(--text-2); margin-bottom: 1.5rem; line-height: 1.6; }
-  .steps-list { list-style: none; margin-bottom: 1.5rem; }
-  .steps-list li { display: flex; gap: 10px; margin-bottom: 10px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
-  .step-n { min-width: 22px; height: 22px; border-radius: 50%; background: var(--red-light); color: var(--red); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
-  .steps-list a { color: var(--blue); text-decoration: none; }
-  .steps-list a:hover { text-decoration: underline; }
-  .steps-list code { background: var(--bg-secondary); padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: monospace; }
-  
-  /* ─── Misc ─── */
-  .empty { text-align: center; padding: 3rem 1rem; color: var(--text-3); }
-  .empty-icon { font-size: 40px; margin-bottom: 10px; }
-  .empty p { font-size: 13px; }
-  .loader { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 3rem; color: var(--text-2); font-size: 13px; }
-  .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  
-  .toast {
-    position: fixed; bottom: 24px; right: 24px; z-index: 200;
-    padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
-    box-shadow: var(--shadow-md); animation: slideUp 0.25s ease; max-width: 320px;
-  }
-  @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .toast.success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
-  .toast.error { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
-  .toast.info { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+/* Mode selector */
+.mode-opts{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.mode-opt{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1.5px solid var(--border);border-radius:var(--r2);cursor:pointer;transition:all .15s}
+.mode-opt:hover{border-color:var(--border2)}
+.mode-opt.selected{border-color:var(--red);background:var(--red-bg)}
+.mode-opt input[type=radio]{margin-top:2px;accent-color:var(--red);flex-shrink:0}
+.mode-opt-text strong{font-size:13px;display:block}
+.mode-opt-text span{font-size:11px;color:var(--t3)}
 
-  .divider { height: 1px; background: var(--border); margin: 1rem 0; }
+/* Interval controls */
+.interval-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.interval-btn{padding:6px 12px;font-size:12px;font-weight:700;border-radius:20px;border:1.5px solid var(--border);cursor:pointer;background:transparent;color:var(--t2);transition:all .15s}
+.interval-btn:hover{border-color:var(--red);color:var(--red)}
+.interval-btn.sel{background:var(--red);border-color:var(--red-d);color:#fff}
+.custom-n{width:60px;padding:6px 8px;font-size:13px;border:1.5px solid var(--border2);border-radius:var(--r2);text-align:center;background:var(--card);color:var(--text)}
+.custom-n:focus{outline:none;border-color:var(--red)}
 
-  /* Timezone helper */
-  .tz-hint { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+.fg{margin-bottom:10px}
+.fg label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);margin-bottom:5px}
+.fg input,.fg select{width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)}
+.fg input:focus,.fg select:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(255,0,0,.1)}
+.fg-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
-  /* Scrollable list */
-  .video-list-scroll { max-height: 520px; overflow-y: auto; padding-right: 2px; }
-  .video-list-scroll::-webkit-scrollbar { width: 5px; }
-  .video-list-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
-  
-  /* Select all checkbox */
-  .list-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .list-header label { font-size: 12px; color: var(--text-2); cursor: pointer; }
-  .list-header input[type=checkbox] { accent-color: var(--red); cursor: pointer; }
+/* Video selection list */
+.sel-list{display:flex;flex-direction:column;gap:5px;max-height:340px;overflow-y:auto;padding-right:2px}
+.sel-list::-webkit-scrollbar{width:4px}
+.sel-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.sel-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r3);background:var(--card);cursor:pointer;transition:all .15s;user-select:none}
+.sel-row:hover{border-color:var(--border2);background:var(--hover)}
+.sel-row.checked{border-color:var(--red);background:var(--red-bg)}
+.sel-row input[type=checkbox]{accent-color:var(--red);flex-shrink:0;width:15px;height:15px;cursor:pointer}
+.sel-row .sthumb{width:56px;height:32px;object-fit:cover;border-radius:3px;background:var(--hover);flex-shrink:0}
+.sel-row .sthumb-ph{width:56px;height:32px;border-radius:3px;background:var(--hover);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.sel-row .stitle{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+/* reorder arrows */
+.reorder{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
+.reorder button{width:18px;height:16px;border:1px solid var(--border);border-radius:3px;background:var(--card);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;color:var(--t2);padding:0;transition:all .15s}
+.reorder button:hover{background:var(--hover);color:var(--text)}
 
-  @media (max-width: 600px) {
-    .form-row { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .video-row { flex-wrap: wrap; }
-    .video-actions { width: 100%; justify-content: flex-end; }
-    .cal-grid { font-size: 10px; }
-    .cal-cell { min-height: 44px; padding: 2px 3px; }
-  }
+/* Preview table */
+.preview-wrap{margin-top:0}
+.preview-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.ptable{width:100%;border-collapse:collapse;font-size:12px}
+.ptable th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);border-bottom:1px solid var(--border)}
+.ptable td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.ptable tr:last-child td{border-bottom:none}
+.ptable tr:hover td{background:var(--hover)}
+.ptable .pnum{width:24px;color:var(--t3);font-weight:700;font-size:11px}
+.ptable .ptitle{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.ptable .pdate{white-space:nowrap;color:var(--green);font-weight:700}
+.ptable .pdate-custom input{width:130px;padding:4px 7px;font-size:12px;border:1px solid var(--border2);border-radius:4px;background:var(--card);color:var(--text)}
+.ptable .pdate-custom input:focus{outline:none;border-color:var(--red)}
+
+/* Progress bar */
+.progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:10px 0}
+.progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
+
+/* Info boxes */
+.info-box{padding:9px 12px;border-radius:var(--r3);font-size:12px;line-height:1.55;margin-bottom:10px}
+.info-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b)}
+.info-orange{background:var(--orange-bg);color:var(--orange);border:1px solid var(--orange-b)}
+.info-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b)}
+
+/* Calendar */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-title{font-size:15px;font-weight:700}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-head{text-align:center;font-size:10px;font-weight:700;color:var(--t3);padding:4px 0;text-transform:uppercase;letter-spacing:.06em}
+.cal-cell{min-height:68px;padding:4px 5px;border-radius:var(--r2);border:1px solid var(--border);background:var(--card)}
+.cal-cell.dim{background:var(--hover);opacity:.4}
+.cal-cell.today{border-color:var(--red)}
+.cal-num{font-size:11px;font-weight:700;color:var(--t3);margin-bottom:2px}
+.cal-cell.today .cal-num{background:var(--red);color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px}
+.cal-ev{background:var(--green-bg);color:var(--green);border-radius:3px;padding:2px 5px;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;border-left:2px solid var(--green)}
+.cal-more{font-size:10px;color:var(--t3);margin-top:2px;padding-left:4px}
+
+/* Setup */
+.setup-wrap{max-width:520px;margin:2rem auto}
+.setup-wrap h2{font-size:20px;font-weight:800;margin-bottom:8px}
+.setup-intro{font-size:13px;color:var(--t2);margin-bottom:1.5rem;line-height:1.65}
+.steps{list-style:none;margin-bottom:1.5rem}
+.steps li{display:flex;gap:10px;margin-bottom:10px;font-size:13px;line-height:1.55;color:var(--t2)}
+.sn{min-width:22px;height:22px;border-radius:50%;background:var(--red-bg);color:var(--red);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.steps a{color:var(--blue)}.steps code{background:var(--hover);padding:1px 6px;border-radius:4px;font-size:11px;font-family:monospace}
+.divider{height:1px;background:var(--border);margin:1rem 0}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(3px)}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;width:400px;max-width:calc(100vw - 2rem);box-shadow:var(--sh2)}
+.modal h3{font-size:16px;font-weight:800;margin-bottom:1.25rem}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:1.25rem}
+.color-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.cswatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2.5px solid transparent;transition:transform .1s}
+.cswatch:hover{transform:scale(1.15)}
+.cswatch.sel{border-color:var(--text)}
+
+/* Misc */
+.empty{text-align:center;padding:3rem 1rem;color:var(--t3)}
+.loader{display:flex;align-items:center;justify-content:center;gap:10px;padding:3rem;color:var(--t2);font-size:13px}
+.spinner{width:20px;height:20px;border:2.5px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:24px;right:24px;z-index:200;padding:10px 16px;border-radius:var(--r2);font-size:13px;font-weight:600;box-shadow:var(--sh2);animation:slideUp .25s ease;max-width:300px}
+@keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+.toast.ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b)}
+.toast.err{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5}
+.toast.inf{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-b)}
+.vscroll{max-height:520px;overflow-y:auto;padding-right:2px}
+.vscroll::-webkit-scrollbar{width:5px}
+.vscroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="header">
-    <div class="logo">
-      <div class="logo-icon">
-        <svg viewBox="0 0 90 90"><path d="M88.3,25.4c-1-3.8-4-6.8-7.8-7.8C73.8,16,45,16,45,16S16.2,16,9.5,17.7c-3.8,1-6.8,4-7.8,7.8C0,32.1,0,46,0,46s0,13.9,1.7,20.6c1,3.8,4,6.8,7.8,7.8C16.2,76,45,76,45,76s28.8,0,35.5-1.7c3.8-1,6.8-4,7.8-7.8C90,59.9,90,46,90,46S90,32.1,88.3,25.4z M36,59V33l24,13L36,59z"/></svg>
-      </div>
-      <div class="logo-text">
-        <h1>YT Scheduler</h1>
-        <p>Multi-Channel Video Planner</p>
-      </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="logo-box"><svg viewBox="0 0 90 90"><path d="M88.3,25.4c-1-3.8-4-6.8-7.8-7.8C73.8,16,45,16,45,16S16.2,16,9.5,17.7c-3.8,1-6.8,4-7.8,7.8C0,32.1,0,46,0,46s0,13.9,1.7,20.6c1,3.8,4,6.8,7.8,7.8C16.2,76,45,76,45,76s28.8,0,35.5-1.7c3.8-1,6.8-4,7.8-7.8C90,59.9,90,46,90,46S90,32.1,88.3,25.4z M36,59V33l24,13L36,59z"/></svg></div>
+      <div><div style="font-size:16px;font-weight:700">YT Scheduler</div><div style="font-size:11px;color:var(--t3)">Multi-Channel Video Planner</div></div>
     </div>
-    <div class="header-right" id="header-right"></div>
+    <div class="hdr-r" id="hdr-r"></div>
   </div>
-
   <div id="root"></div>
 </div>
-
-<div id="toast-container"></div>
+<div id="toasts"></div>
 
 <script>
-// ═══════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════
-var APP = {
-  step: 'setup',           // setup | dashboard | loading
-  channels: loadChannels(), // [{id, name, clientId, color}]
-  activeChannel: null,
-  accessToken: '',
-  tokenExpiry: 0,
-  videos: [],
-  scheduled: {},           // videoId -> ISO string
-  filter: 'all',
-  tab: 'list',
-  bulkMode: false,
-  selected: new Set(),
-  modal: null,             // null | 'schedule' | 'bulk' | 'addChannel'
-  modalVideo: null,
-  schedDate: '',
-  schedTime: '10:00',
-  schedTimezone: getLocalTZ(),
-  calMonth: new Date().getMonth(),
-  calYear: new Date().getFullYear(),
-  newCh: { name: '', clientId: '', color: '#FF0000' }
+var A={
+  step:'setup',channels:lsCh(),active:null,token:'',
+  videos:[],scheduled:{},
+  filter:'all',tab:'list',
+  openPanel:null,
+  modal:null,
+  newCh:{name:'',cid:'',color:'#FF0000'},
+  calM:new Date().getMonth(),calY:new Date().getFullYear(),
+  // bulk state
+  bulk:{
+    mode:'interval',   // 'interval' | 'custom'
+    interval:1,        // days
+    customN:3,         // for custom interval input
+    startDate:'',
+    time:'10:00',
+    selected:[],       // ordered array of videoIds
+    customDates:{}     // videoId -> date string (for custom mode)
+  }
 };
+var COLORS=['#FF0000','#1A7F3C','#1A56DB','#9333EA','#EA580C','#0891B2','#BE185D','#CA8A04'];
 
-var COLORS = ['#FF0000','#1A7F3C','#1A56DB','#9333EA','#EA580C','#0891B2','#BE185D','#CA8A04'];
+function lsCh(){try{return JSON.parse(localStorage.getItem('yt_ch')||'[]')}catch(e){return[]}}
+function saveCh(){localStorage.setItem('yt_ch',JSON.stringify(A.channels))}
+function saveSched(){if(!A.active)return;localStorage.setItem('yt_sc_'+A.active.id,JSON.stringify(A.scheduled))}
+function loadSched(ch){try{return JSON.parse(localStorage.getItem('yt_sc_'+ch.id)||'{}')}catch(e){return{}}}
+function tzOffset(){return-new Date().getTimezoneOffset()/60}
+function tzLabel(){var o=tzOffset();return'UTC'+(o>=0?'+':'')+o}
+function localToUTC(date,time){
+  var o=tzOffset(),d=new Date(date+'T'+time+':00');
+  d.setHours(d.getHours()-o);return d.toISOString();
+}
+function utcToLocal(iso){
+  if(!iso)return{date:'',time:''};
+  var d=new Date(iso);
+  return{date:d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()),time:pad(d.getHours())+':'+pad(d.getMinutes())};
+}
+function pad(n){return String(n).padStart(2,'0')}
+function addDays(dateStr,days){var d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+days);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function fmtDate(iso){if(!iso)return'';return new Date(iso).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+function fmtShort(dateStr){if(!dateStr)return'-';var d=new Date(dateStr+'T12:00:00');return d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}
+function isSoon(iso){if(!iso)return false;var d=new Date(iso)-Date.now();return d>0&&d<7*864e5}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function $(id){return document.getElementById(id)}
+function val(id){return($( id)||{}).value||''}
+function today(){return new Date().toISOString().split('T')[0]}
 
-function loadChannels() {
-  try { return JSON.parse(localStorage.getItem('yt_channels') || '[]'); } catch(e){ return []; }
-}
-function saveChannels() {
-  localStorage.setItem('yt_channels', JSON.stringify(APP.channels));
-}
-function saveScheduled() {
-  if (!APP.activeChannel) return;
-  var key = 'yt_sched_' + APP.activeChannel.id;
-  localStorage.setItem(key, JSON.stringify(APP.scheduled));
-}
-function loadScheduledFor(ch) {
-  try { return JSON.parse(localStorage.getItem('yt_sched_' + ch.id) || '{}'); } catch(e){ return {}; }
-}
-function getLocalTZ() {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){ return 'UTC'; }
-}
-function getLocalOffset() {
-  return -new Date().getTimezoneOffset() / 60;
-}
-
-// ═══════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════
-function esc(s) {
-  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function $(id){ return document.getElementById(id); }
-function val(id){ return ($( id)||{}).value||''; }
-
-function toast(msg, type) {
-  type = type||'info';
-  var el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  $('toast-container').appendChild(el);
-  setTimeout(function(){ el.style.opacity='0'; el.style.transform='translateY(8px)'; el.style.transition='all 0.3s'; setTimeout(function(){ el.remove(); }, 300); }, 3000);
+function toast(msg,type){
+  var el=document.createElement('div');el.className='toast '+(type||'inf');el.textContent=msg;
+  $('toasts').appendChild(el);
+  setTimeout(function(){el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateY(8px)';setTimeout(function(){el.remove()},320)},3200);
 }
 
-function fmtDate(iso) {
-  if (!iso) return '';
-  var d = new Date(iso);
-  return d.toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' })
-    + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
-}
-
-function isUpcoming(iso) {
-  if (!iso) return false;
-  var diff = new Date(iso) - new Date();
-  return diff > 0 && diff < 7 * 24 * 3600 * 1000;
-}
-
-function localToUTC(date, time) {
-  // date = "YYYY-MM-DD", time = "HH:MM"
-  var offset = getLocalOffset();
-  var dt = new Date(date + 'T' + time + ':00');
-  dt.setHours(dt.getHours() - offset);
-  return dt.toISOString();
-}
-
-function utcToLocal(iso) {
-  if (!iso) return {date:'', time:''};
-  var d = new Date(iso);
-  var yyyy = d.getFullYear();
-  var mm = String(d.getMonth()+1).padStart(2,'0');
-  var dd = String(d.getDate()).padStart(2,'0');
-  var hh = String(d.getHours()).padStart(2,'0');
-  var min = String(d.getMinutes()).padStart(2,'0');
-  return { date: yyyy+'-'+mm+'-'+dd, time: hh+':'+min };
-}
-
-// ═══════════════════════════════════════════════
-// GOOGLE API
-// ═══════════════════════════════════════════════
-function loadGIS() {
-  return new Promise(function(res, rej) {
-    if (window.google && window.google.accounts) { res(); return; }
-    var s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.async = true;
-    s.onload = res;
-    s.onerror = function() { rej(new Error('Gagal memuat Google script')); };
+/* ─ GIS / API ─ */
+function loadGIS(){
+  return new Promise(function(res,rej){
+    if(window.google&&window.google.accounts){res();return;}
+    var s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;
+    s.onload=res;s.onerror=function(){rej(new Error('Gagal load Google'))};
     document.head.appendChild(s);
   });
 }
-
-async function signIn(channel) {
-  try {
+async function signIn(ch){
+  try{
     await loadGIS();
-    var client = google.accounts.oauth2.initTokenClient({
-      client_id: channel.clientId,
-      scope: 'https://www.googleapis.com/auth/youtube',
-      callback: async function(r) {
-        if (r.error) { toast('Login gagal: ' + r.error, 'error'); return; }
-        APP.accessToken = r.access_token;
-        APP.tokenExpiry = Date.now() + (r.expires_in - 60) * 1000;
-        APP.activeChannel = channel;
-        APP.scheduled = loadScheduledFor(channel);
-        APP.step = 'loading';
-        render();
-        await fetchVideos();
+    google.accounts.oauth2.initTokenClient({
+      client_id:ch.cid||ch.clientId,
+      scope:'https://www.googleapis.com/auth/youtube',
+      callback:async function(r){
+        if(r.error){toast('Login gagal: '+r.error,'err');return;}
+        A.token=r.access_token;A.active=ch;A.scheduled=loadSched(ch);
+        A.step='loading';render();await fetchVideos();
       }
-    });
-    client.requestAccessToken({ prompt: '' });
-  } catch(e) {
-    toast('Error: ' + e.message, 'error');
-  }
+    }).requestAccessToken({prompt:''});
+  }catch(e){toast('Error: '+e.message,'err');}
 }
-
-async function fetchVideos() {
-  try {
-    var r1 = await fetch(
-      'https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',
-      { headers: { Authorization: 'Bearer ' + APP.accessToken } }
-    );
-    var d1 = await r1.json();
-    if (d1.error) throw new Error(d1.error.message);
-
-    if (!d1.items || !d1.items.length) {
-      APP.videos = []; APP.step = 'dashboard'; render(); return;
-    }
-
-    var ids = d1.items.map(function(i){ return i.id.videoId; }).filter(Boolean).join(',');
-    var r2 = await fetch(
-      'https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id=' + ids,
-      { headers: { Authorization: 'Bearer ' + APP.accessToken } }
-    );
-    var d2 = await r2.json();
-    if (d2.error) throw new Error(d2.error.message);
-
-    APP.videos = d2.items || [];
-    // Sync publishAt from API into local scheduled map
-    APP.videos.forEach(function(v) {
-      if (v.status && v.status.publishAt) {
-        APP.scheduled[v.id] = v.status.publishAt;
-      }
-    });
-    saveScheduled();
-    APP.step = 'dashboard';
-    render();
-  } catch(e) {
-    toast('Gagal memuat video: ' + e.message, 'error');
-    APP.step = 'setup';
-    render();
-  }
+async function fetchVideos(){
+  try{
+    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',{headers:{Authorization:'Bearer '+A.token}});
+    var d1=await r1.json();
+    if(d1.error)throw new Error(d1.error.message);
+    if(!d1.items||!d1.items.length){A.videos=[];A.step='dashboard';render();return;}
+    var ids=d1.items.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
+    var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,{headers:{Authorization:'Bearer '+A.token}});
+    var d2=await r2.json();
+    if(d2.error)throw new Error(d2.error.message);
+    A.videos=d2.items||[];
+    A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
+    saveSched();A.step='dashboard';render();
+  }catch(e){toast('Gagal: '+e.message,'err');A.step='setup';render();}
 }
-
-async function apiSchedule(videoId, publishAt) {
-  var r = await fetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
-    method: 'PUT',
-    headers: { Authorization: 'Bearer ' + APP.accessToken, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: videoId, status: { privacyStatus: 'private', publishAt: publishAt } })
+async function apiSet(videoId,publishAt){
+  var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
+    method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
+    body:JSON.stringify({id:videoId,status:{privacyStatus:'private',publishAt:publishAt}})
   });
-  var d = await r.json();
-  if (d.error) throw new Error(d.error.message);
+  var d=await r.json();if(d.error)throw new Error(d.error.message);
+}
+async function apiUnset(videoId){
+  var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
+    method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
+    body:JSON.stringify({id:videoId,status:{privacyStatus:'private'}})
+  });
+  var d=await r.json();if(d.error)throw new Error(d.error.message);
+}
+
+/* ─ Per-video actions ─ */
+async function doSchedule(vid){
+  var date=val('d-'+vid),time=val('t-'+vid)||'10:00';
+  if(!date){toast('Pilih tanggal dulu','err');return;}
+  var btn=$('save-'+vid);if(btn){btn.disabled=true;btn.textContent='Menyimpan...';}
+  try{
+    var pub=localToUTC(date,time);
+    await apiSet(vid,pub);
+    A.scheduled[vid]=pub;saveSched();A.openPanel=null;
+    toast('✓ Dijadwalkan: '+fmtDate(pub),'ok');render();
+  }catch(e){toast('Gagal: '+e.message,'err');if(btn){btn.disabled=false;btn.textContent='Simpan';}}
+}
+async function doUnschedule(vid){
+  try{await apiUnset(vid);delete A.scheduled[vid];saveSched();toast('Jadwal dihapus','inf');render();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+function openPanel(id){A.openPanel=(A.openPanel===id?null:id);render();}
+
+/* ─ Bulk actions ─ */
+function getBulkPreview(){
+  var b=A.bulk,sel=b.selected,time=val('b-time')||b.time;
+  var result=[];
+  if(b.mode==='interval'){
+    var start=val('b-start')||b.startDate;
+    if(!start||!sel.length)return[];
+    for(var i=0;i<sel.length;i++){
+      var dateStr=addDays(start,i*b.interval);
+      result.push({id:sel[i],date:dateStr,time:time,publishAt:localToUTC(dateStr,time)});
+    }
+  }else{
+    for(var i=0;i<sel.length;i++){
+      var id=sel[i];
+      var dateStr=val('bc-'+id)||b.customDates[id]||'';
+      if(dateStr)result.push({id:id,date:dateStr,time:time,publishAt:localToUTC(dateStr,time)});
+    }
+  }
+  return result;
+}
+
+async function applyBulk(){
+  // read current form values
+  A.bulk.time=val('b-time')||A.bulk.time;
+  if(A.bulk.mode==='interval')A.bulk.startDate=val('b-start')||A.bulk.startDate;
+  if(A.bulk.mode==='custom'){
+    A.bulk.selected.forEach(function(id){
+      var v=val('bc-'+id);if(v)A.bulk.customDates[id]=v;
+    });
+  }
+  var preview=getBulkPreview();
+  if(!preview.length){toast('Tidak ada jadwal untuk diterapkan','err');return;}
+  var btn=$('bulk-apply');if(btn){btn.disabled=true;btn.textContent='Menyimpan...';}
+  var ok=0,fail=0;
+  for(var i=0;i<preview.length;i++){
+    try{
+      await apiSet(preview[i].id,preview[i].publishAt);
+      A.scheduled[preview[i].id]=preview[i].publishAt;ok++;
+      if(btn)btn.textContent='Menyimpan '+ok+'/'+preview.length+'...';
+    }catch(e){fail++;}
+  }
+  saveSched();
+  if(fail===0)toast('✓ '+ok+' video berhasil dijadwalkan!','ok');
+  else toast(ok+' berhasil, '+fail+' gagal','inf');
+  if(btn){btn.disabled=false;btn.textContent='Terapkan Jadwal';}
+  render();
+}
+
+function toggleBulkSel(id){
+  var idx=A.bulk.selected.indexOf(id);
+  if(idx>-1)A.bulk.selected.splice(idx,1);
+  else A.bulk.selected.push(id);
+  render();
+}
+function selectAllBulk(){
+  var drafts=getDrafts();
+  if(A.bulk.selected.length===drafts.length)A.bulk.selected=[];
+  else A.bulk.selected=drafts.map(function(v){return v.id});
+  render();
+}
+function moveUp(id){
+  var arr=A.bulk.selected,i=arr.indexOf(id);
+  if(i>0){arr.splice(i,1);arr.splice(i-1,0,id);}render();
+}
+function moveDown(id){
+  var arr=A.bulk.selected,i=arr.indexOf(id);
+  if(i<arr.length-1){arr.splice(i,1);arr.splice(i+1,0,id);}render();
+}
+function setInterval2(n){
+  // save current form values before re-render
+  var bs=val('b-start'),bt=val('b-time');
+  if(bs)A.bulk.startDate=bs;if(bt)A.bulk.time=bt;
+  A.bulk.interval=n;render();
+}
+function setMode(m){
+  var bs=val('b-start'),bt=val('b-time');
+  if(bs)A.bulk.startDate=bs;if(bt)A.bulk.time=bt;
+  A.bulk.mode=m;render();
+}
+
+/* ─ Misc ─ */
+function signOut(){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;render();toast('Signed out','inf');}
+async function refresh(){A.step='loading';render();await fetchVideos();}
+function switchCh(ch){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;render();setTimeout(function(){signIn(ch)},100);}
+function addChannel(){
+  var name=val('nc-name').trim()||'Channel Baru',cid=val('nc-cid').trim();
+  if(!cid){toast('Masukkan Client ID','err');return;}
+  var ch={id:Date.now().toString(),name:name,cid:cid,color:A.newCh.color};
+  A.channels.push(ch);saveCh();A.modal=null;A.newCh={name:'',cid:'',color:'#FF0000'};
+  toast('Channel ditambahkan!','ok');render();setTimeout(function(){signIn(ch)},150);
+}
+function delChannel(id){
+  A.channels=A.channels.filter(function(c){return c.id!==id});saveCh();
+  if(A.active&&A.active.id===id){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;}
+  render();toast('Channel dihapus','inf');
+}
+function getDrafts(){
+  return A.videos.filter(function(v){var s=v.status||{};return s.privacyStatus==='private'||s.privacyStatus==='unlisted';});
+}
+function getFiltered(){
+  var d=getDrafts();
+  if(A.filter==='scheduled')return d.filter(function(v){return A.scheduled[v.id]});
+  if(A.filter==='unscheduled')return d.filter(function(v){return!A.scheduled[v.id]});
   return d;
 }
+function getThumb(v){var t=v.snippet&&v.snippet.thumbnails;return t&&(t.medium||t.default);}
+function getTitle(v){return(v.snippet&&v.snippet.title)||'Untitled'}
 
-async function apiUnschedule(videoId) {
-  var r = await fetch('https://www.googleapis.com/youtube/v3/videos?part=status', {
-    method: 'PUT',
-    headers: { Authorization: 'Bearer ' + APP.accessToken, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: videoId, status: { privacyStatus: 'private' } })
-  });
-  var d = await r.json();
-  if (d.error) throw new Error(d.error.message);
-  return d;
+/* ─ RENDER ─ */
+function renderHeader(){
+  var r=$('hdr-r');if(!r)return;
+  if(A.step==='dashboard'){
+    r.innerHTML='<span style="font-size:12px;color:var(--t3)"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(A.active?A.active.name:'')+'</span>'+
+    '<button class="btn btn-sm btn-ghost" onclick="refresh()">↻</button>'+
+    '<button class="btn btn-sm btn-ghost" onclick="signOut()">Sign Out</button>';
+  }else r.innerHTML='';
 }
 
-// ═══════════════════════════════════════════════
-// ACTIONS
-// ═══════════════════════════════════════════════
-function getDraftVideos() {
-  return APP.videos.filter(function(v) {
-    var st = v.status || {};
-    return st.privacyStatus === 'private' || st.privacyStatus === 'unlisted';
-  });
+function renderChBar(){
+  if(!A.channels.length)return'';
+  window._chm={};A.channels.forEach(function(c){window._chm[c.id]=c;});
+  var chips=A.channels.map(function(ch){
+    var act=A.active&&A.active.id===ch.id;
+    return'<span class="ch-chip'+(act?' active':'')+'"'+(!act?' style="border-left:3px solid '+esc(ch.color)+'"':'')+' onclick="switchCh(window._chm[\''+ch.id+'\'])">'+
+      esc(ch.name)+'<span class="ch-del" onclick="event.stopPropagation();delChannel(\''+ch.id+'\')">×</span></span>';
+  }).join('');
+  return'<div class="ch-bar"><span class="ch-label">Channel:</span><div class="ch-chips">'+chips+'</div><button class="btn-add-ch" onclick="A.modal=\'addch\';render()">+ Tambah</button></div>';
 }
 
-function getFiltered() {
-  var drafts = getDraftVideos();
-  if (APP.filter === 'scheduled') return drafts.filter(function(v){ return APP.scheduled[v.id]; });
-  if (APP.filter === 'unscheduled') return drafts.filter(function(v){ return !APP.scheduled[v.id]; });
-  return drafts;
+function renderSetup(){
+  var h=renderChBar();
+  if(A.channels.length){h+='<div class="empty"><p style="font-size:13px">Pilih channel di atas atau tambah channel baru.</p></div>';return h;}
+  h+='<div class="setup-wrap"><div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">'+
+  '<h2>🎬 Setup YouTube Scheduler</h2>'+
+  '<p class="setup-intro">Hubungkan channel YouTube-mu. Gratis, semua berjalan di browser — tidak ada server.</p>'+
+  '<ul class="steps">'+
+  '<li><div class="sn">1</div><div>Buka <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → Buat project baru</div></li>'+
+  '<li><div class="sn">2</div><div><b>APIs & Services</b> → Enable <b>YouTube Data API v3</b></div></li>'+
+  '<li><div class="sn">3</div><div><b>Credentials</b> → <b>OAuth 2.0 Client ID</b> → Web Application → tambahkan URL hosting di Authorized Origins</div></li>'+
+  '<li><div class="sn">4</div><div><b>OAuth consent screen</b> → Test users → tambahkan Gmail-mu</div></li>'+
+  '</ul>'+
+  '<div class="divider"></div>'+
+  '<div class="fg"><label>Nama Channel</label><input id="s-name" type="text" placeholder="Channel Utama"></div>'+
+  '<div class="fg"><label>OAuth Client ID</label><input id="s-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>'+
+  '<div style="margin-top:1rem"><button class="btn btn-red" onclick="setupFirst()">Hubungkan →</button></div>'+
+  '</div></div>';
+  return h;
+}
+function setupFirst(){
+  var name=val('s-name').trim()||'Channel Saya',cid=val('s-cid').trim();
+  if(!cid){toast('Masukkan Client ID','err');return;}
+  var ch={id:Date.now().toString(),name:name,cid:cid,color:'#FF0000'};
+  A.channels.push(ch);saveCh();render();setTimeout(function(){signIn(ch)},100);
 }
 
-async function scheduleVideo() {
-  var date = val('s-date');
-  var time = val('s-time') || '10:00';
-  if (!date) { toast('Pilih tanggal dulu', 'error'); return; }
-  var publishAt = localToUTC(date, time);
-  var ids = APP.modal === 'bulk' ? Array.from(APP.selected) : [APP.modalVideo.id];
-  var btn = $('btn-save-sched');
-  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
-  try {
-    for (var i = 0; i < ids.length; i++) {
-      await apiSchedule(ids[i], publishAt);
-      APP.scheduled[ids[i]] = publishAt;
+function renderStats(){
+  var d=getDrafts(),sc=Object.keys(A.scheduled).length;
+  var up=d.filter(function(v){return isSoon(A.scheduled[v.id])}).length;
+  return'<div class="stats">'+
+    '<div class="stat"><div class="stat-n">'+d.length+'</div><div class="stat-l">Total Draft</div></div>'+
+    '<div class="stat"><div class="stat-n c-green">'+sc+'</div><div class="stat-l">Terjadwal</div></div>'+
+    '<div class="stat"><div class="stat-n c-orange">'+(d.length-sc)+'</div><div class="stat-l">Belum Jadwal</div></div>'+
+    '<div class="stat"><div class="stat-n c-blue">'+up+'</div><div class="stat-l">Rilis 7 Hari</div></div>'+
+  '</div>';
+}
+
+/* Per-video tab */
+function renderPerVideo(){
+  var filtered=getFiltered(),d=getDrafts(),sc=Object.keys(A.scheduled).length;
+  var h='<div class="filters">'+
+    '<button class="chip'+(A.filter==='all'?' active':'')+'" onclick="A.filter=\'all\';render()">Semua ('+d.length+')</button>'+
+    '<button class="chip'+(A.filter==='scheduled'?' active':'')+'" onclick="A.filter=\'scheduled\';render()">✓ Terjadwal ('+sc+')</button>'+
+    '<button class="chip'+(A.filter==='unscheduled'?' active':'')+'" onclick="A.filter=\'unscheduled\';render()">Belum ('+(d.length-sc)+')</button>'+
+  '</div>';
+  if(!filtered.length)return h+'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div><p style="font-size:13px">Tidak ada video.</p></div>';
+  h+='<div class="vlist vscroll">';
+  filtered.forEach(function(v){
+    var sched=A.scheduled[v.id],isOpen=A.openPanel===v.id;
+    var thumb=getThumb(v),title=getTitle(v),existing=sched?utcToLocal(sched):{date:'',time:'10:00'};
+    h+='<div class="vrow'+(sched?' scheduled':'')+(isOpen?' open':'')+'">';
+    h+=thumb?'<img class="thumb" src="'+esc(thumb.url)+'" alt="" loading="lazy">':'<div class="thumb-ph">▶</div>';
+    h+='<div style="min-width:0"><div class="vtitle" title="'+esc(title)+'">'+esc(title)+'</div>'+
+      '<div class="vmeta">'+(sched?'<span class="badge '+(isSoon(sched)?'b-soon':'b-sched')+'">'+(isSoon(sched)?'⏰ ':'')+esc(fmtDate(sched))+'</span>':'<span class="badge b-draft">Belum dijadwalkan</span>')+'</div></div>';
+    h+='<div class="vactions">';
+    if(sched)h+='<button class="btn-unsched" onclick="doUnschedule(\''+v.id+'\')">✕ Hapus Jadwal</button>';
+    h+='<button class="btn btn-xs'+(sched?'':' btn-red')+'" onclick="openPanel(\''+v.id+'\')">'+(isOpen?'✕ Tutup':(sched?'✏ Ubah':'📅 Jadwalkan'))+'</button>';
+    h+='</div></div>';
+    if(isOpen){
+      h+='<div class="ipanel">';
+      h+='<div><label>Tanggal</label><input type="date" id="d-'+v.id+'" min="'+today()+'" value="'+esc(existing.date)+'"><div class="tz-hint">Timezone: '+tzLabel()+'</div></div>';
+      h+='<div><label>Jam</label><input type="time" id="t-'+v.id+'" value="'+esc(existing.time)+'"></div>';
+      h+='<div style="display:flex;gap:6px;margin-top:auto">'+
+        '<button class="btn btn-red btn-sm" id="save-'+v.id+'" onclick="doSchedule(\''+v.id+'\')">Simpan</button>'+
+        (sched?'<button class="btn btn-sm" onclick="doUnschedule(\''+v.id+'\')">Hapus</button>':'')+
+        '<button class="btn btn-sm btn-ghost" onclick="openPanel(\''+v.id+'\')">Batal</button>'+
+      '</div>';
+      h+='</div>';
     }
-    saveScheduled();
-    APP.modal = null; APP.selected = new Set();
-    toast(ids.length > 1 ? ids.length + ' video berhasil dijadwalkan!' : 'Video dijadwalkan!', 'success');
-    render();
-  } catch(e) {
-    toast('Error: ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = 'Simpan Jadwal'; }
-  }
-}
-
-async function unscheduleVideo(videoId) {
-  try {
-    await apiUnschedule(videoId);
-    delete APP.scheduled[videoId];
-    saveScheduled();
-    toast('Jadwal dibatalkan', 'info');
-    render();
-  } catch(e) {
-    toast('Error: ' + e.message, 'error');
-  }
-}
-
-function signOut() {
-  APP.accessToken = ''; APP.videos = []; APP.scheduled = {};
-  APP.step = 'setup'; APP.activeChannel = null;
-  render();
-  toast('Signed out', 'info');
-}
-
-async function refresh() {
-  APP.step = 'loading'; render();
-  await fetchVideos();
-}
-
-function switchChannel(ch) {
-  APP.accessToken = ''; APP.videos = []; APP.scheduled = {};
-  APP.step = 'setup'; APP.activeChannel = null;
-  render();
-  setTimeout(function(){ signIn(ch); }, 100);
-}
-
-function addChannel() {
-  var name = val('new-ch-name').trim();
-  var cid = val('new-ch-cid').trim();
-  if (!name) { toast('Nama channel harus diisi', 'error'); return; }
-  if (!cid) { toast('Client ID harus diisi', 'error'); return; }
-  var ch = { id: Date.now().toString(), name: name, clientId: cid, color: APP.newCh.color };
-  APP.channels.push(ch);
-  saveChannels();
-  APP.modal = null;
-  APP.newCh = { name: '', clientId: '', color: '#FF0000' };
-  toast('Channel "' + name + '" ditambahkan!', 'success');
-  render();
-  setTimeout(function(){ signIn(ch); }, 150);
-}
-
-function deleteChannel(id) {
-  APP.channels = APP.channels.filter(function(c){ return c.id !== id; });
-  saveChannels();
-  if (APP.activeChannel && APP.activeChannel.id === id) {
-    APP.accessToken = ''; APP.videos = []; APP.scheduled = {};
-    APP.step = 'setup'; APP.activeChannel = null;
-  }
-  render();
-  toast('Channel dihapus', 'info');
-}
-
-function openScheduleModal(videoId) {
-  APP.modalVideo = APP.videos.find(function(v){ return v.id === videoId; });
-  var existing = APP.scheduled[videoId];
-  if (existing) {
-    var local = utcToLocal(existing);
-    APP.schedDate = local.date;
-    APP.schedTime = local.time;
-  } else {
-    APP.schedDate = ''; APP.schedTime = '10:00';
-  }
-  APP.modal = 'schedule';
-  render();
-}
-
-function openBulkModal() {
-  APP.schedDate = ''; APP.schedTime = '10:00';
-  APP.modal = 'bulk';
-  render();
-}
-
-function toggleSelect(id) {
-  if (APP.selected.has(id)) APP.selected.delete(id);
-  else APP.selected.add(id);
-  render();
-}
-
-function toggleSelectAll() {
-  var filtered = getFiltered();
-  if (APP.selected.size === filtered.length) APP.selected.clear();
-  else filtered.forEach(function(v){ APP.selected.add(v.id); });
-  render();
-}
-
-// ═══════════════════════════════════════════════
-// RENDER
-// ═══════════════════════════════════════════════
-function renderHeader() {
-  var r = $('header-right');
-  if (!r) return;
-  if (APP.step === 'dashboard') {
-    r.innerHTML =
-      '<span style="font-size:12px;color:var(--text-3)">' +
-        '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>' +
-        esc(APP.activeChannel ? APP.activeChannel.name : '') +
-      '</span>' +
-      '<button class="btn btn-sm btn-ghost" onclick="refresh()" title="Refresh">↻ Refresh</button>' +
-      '<button class="btn btn-sm btn-ghost" onclick="signOut()" title="Sign out">Sign Out</button>';
-  } else {
-    r.innerHTML = '';
-  }
-}
-
-function renderChannelBar() {
-  if (!APP.channels.length) return '';
-  var chips = APP.channels.map(function(ch) {
-    var isActive = APP.activeChannel && APP.activeChannel.id === ch.id;
-    return '<span class="channel-chip' + (isActive ? ' active' : '') + '" style="' + (isActive ? '' : 'border-left:3px solid ' + esc(ch.color)) + '" onclick="switchChannel(window._chMap[\''+ch.id+'\'])">' +
-      esc(ch.name) +
-      '<span class="channel-chip-del" onclick="event.stopPropagation();deleteChannel(\''+ch.id+'\')" title="Hapus channel">×</span>' +
-    '</span>';
-  }).join('');
-  // Build a map for onclick access
-  window._chMap = {};
-  APP.channels.forEach(function(c){ window._chMap[c.id] = c; });
-  return '<div class="channel-bar">' +
-    '<span class="channel-bar-label">Channel:</span>' +
-    '<div class="channel-chips">' + chips + '</div>' +
-    '<button class="btn-add-channel" onclick="APP.modal=\'addChannel\';render()">+ Tambah Channel</button>' +
-  '</div>';
-}
-
-function renderSetup() {
-  var hasChannels = APP.channels.length > 0;
-  var html = '';
-  if (hasChannels) {
-    html += renderChannelBar();
-    html += '<div style="text-align:center;padding:2rem 1rem;color:var(--text-3)">';
-    html += '<p style="font-size:13px">Pilih channel di atas untuk mulai, atau tambah channel baru.</p>';
-    html += '</div>';
-    return html;
-  }
-  html += '<div class="setup-wrap">';
-  html += '<div class="card">';
-  html += '<h2>🎬 Setup YouTube Scheduler</h2>';
-  html += '<p>Hubungkan channel YouTube-mu menggunakan Google OAuth. Gratis, aman — token tidak disimpan di server.</p>';
-  html += '<ul class="steps-list">';
-  html += '<li><div class="step-n">1</div><div>Buka <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → Buat project baru</div></li>';
-  html += '<li><div class="step-n">2</div><div>Menu <b>APIs & Services</b> → <b>Enable APIs</b> → aktifkan <b>YouTube Data API v3</b></div></li>';
-  html += '<li><div class="step-n">3</div><div><b>Credentials</b> → <b>Create Credentials</b> → <b>OAuth 2.0 Client ID</b> → pilih <b>Web Application</b></div></li>';
-  html += '<li><div class="step-n">4</div><div>Di <b>Authorized JavaScript Origins</b> tambahkan URL tempat file ini di-host, contoh: <code>https://namauser.github.io</code></div></li>';
-  html += '<li><div class="step-n">5</div><div>Salin Client ID lalu isi form di bawah</div></li>';
-  html += '</ul>';
-  html += '<div class="divider"></div>';
-  html += '<div class="form-group"><label>Nama Channel</label><input id="setup-name" type="text" placeholder="Contoh: Channel Utama"></div>';
-  html += '<div class="form-group"><label>Google OAuth Client ID</label><input id="setup-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>';
-  html += '<div style="margin-top:1rem"><button class="btn btn-red" onclick="setupFirst()">Hubungkan Channel →</button></div>';
-  html += '</div></div>';
-  return html;
-}
-
-function setupFirst() {
-  var name = val('setup-name').trim() || 'Channel Saya';
-  var cid = val('setup-cid').trim();
-  if (!cid) { toast('Masukkan Client ID', 'error'); return; }
-  var ch = { id: Date.now().toString(), name: name, clientId: cid, color: '#FF0000' };
-  APP.channels.push(ch);
-  saveChannels();
-  render();
-  setTimeout(function(){ signIn(ch); }, 100);
-}
-
-function renderStats() {
-  var drafts = getDraftVideos();
-  var sched = Object.keys(APP.scheduled).length;
-  var unsched = drafts.length - sched;
-  var upcoming = drafts.filter(function(v){ return isUpcoming(APP.scheduled[v.id]); }).length;
-  return '<div class="stats-row">' +
-    '<div class="stat"><div class="stat-num">' + drafts.length + '</div><div class="stat-label">Total Draft</div></div>' +
-    '<div class="stat"><div class="stat-num green">' + sched + '</div><div class="stat-label">Terjadwal</div></div>' +
-    '<div class="stat"><div class="stat-num orange">' + unsched + '</div><div class="stat-label">Belum Jadwal</div></div>' +
-    '<div class="stat"><div class="stat-num blue">' + upcoming + '</div><div class="stat-label">Rilis 7 Hari</div></div>' +
-  '</div>';
-}
-
-function renderVideoList() {
-  var filtered = getFiltered();
-  var html = '';
-  
-  // Bulk bar
-  if (APP.bulkMode && APP.selected.size > 0) {
-    html += '<div class="bulk-bar">' +
-      '<span>' + APP.selected.size + ' video dipilih</span>' +
-      '<button class="btn btn-sm btn-red" onclick="openBulkModal()">Jadwalkan Sekarang</button>' +
-      '<button class="btn btn-sm" onclick="APP.selected.clear();render()">Batal Pilih</button>' +
-    '</div>';
-  }
-
-  // Header row
-  html += '<div class="list-header">' +
-    '<input type="checkbox" id="chk-all" onchange="toggleSelectAll()"' + (APP.bulkMode && APP.selected.size === filtered.length && filtered.length > 0 ? ' checked' : '') + '>' +
-    '<label for="chk-all" style="font-size:12px;color:var(--text-2)">Pilih semua</label>' +
-    '<button class="btn btn-xs btn-ghost" style="margin-left:auto" onclick="APP.bulkMode=!APP.bulkMode;APP.selected.clear();render()">' +
-      (APP.bulkMode ? '✕ Selesai' : '☰ Mode Pilih Banyak') +
-    '</button>' +
-  '</div>';
-
-  if (!filtered.length) {
-    return html + '<div class="empty"><div class="empty-icon">📭</div><p>Tidak ada video di kategori ini.</p></div>';
-  }
-
-  html += '<div class="video-list video-list-scroll">';
-  filtered.forEach(function(v) {
-    var isScheduled = !!APP.scheduled[v.id];
-    var isSoon = isUpcoming(APP.scheduled[v.id]);
-    var thumb = v.snippet && v.snippet.thumbnails && (v.snippet.thumbnails.medium || v.snippet.thumbnails.default);
-    var title = (v.snippet && v.snippet.title) || 'Untitled';
-    var schedInfo = isScheduled ? fmtDate(APP.scheduled[v.id]) : '';
-    var isSelected = APP.selected.has(v.id);
-
-    html += '<div class="video-row' + (isScheduled ? ' scheduled' : '') + '">' +
-      '<input type="checkbox" class="row-check" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelect(\'' + v.id + '\')">' +
-      (thumb
-        ? '<img class="thumb" src="' + esc(thumb.url) + '" alt="" loading="lazy">'
-        : '<div class="thumb-placeholder">▶</div>') +
-      '<div class="video-info">' +
-        '<div class="video-title" title="' + esc(title) + '">' + esc(title) + '</div>' +
-        '<div class="video-sub">' +
-          (isScheduled
-            ? '<span class="badge ' + (isSoon ? 'badge-soon' : 'badge-scheduled') + '">' + (isSoon ? '⏰ Segera: ' : '✓ ') + esc(schedInfo) + '</span>'
-            : '<span class="badge badge-draft">Draft</span>') +
-        '</div>' +
-      '</div>' +
-      '<div class="video-actions">' +
-        (isScheduled
-          ? '<button class="btn btn-xs btn-danger" onclick="unscheduleVideo(\'' + v.id + '\')">Batal Jadwal</button>'
-          : '') +
-        '<button class="btn btn-xs' + (isScheduled ? '' : ' btn-red') + '" onclick="openScheduleModal(\'' + v.id + '\')">' +
-          (isScheduled ? '✏ Ubah' : '+ Jadwalkan') +
-        '</button>' +
-      '</div>' +
-    '</div>';
   });
-  html += '</div>';
-  return html;
+  h+='</div>';return h;
 }
 
-function renderCalendar() {
-  var year = APP.calYear, month = APP.calMonth;
-  var MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  var DAYS = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+/* Bulk scheduler tab */
+function renderBulk(){
+  var drafts=getDrafts(),b=A.bulk;
+  var selCount=b.selected.length;
 
-  // Build event map
-  var evMap = {};
-  Object.entries(APP.scheduled).forEach(function(e) {
-    var id = e[0], iso = e[1];
-    var d = new Date(iso);
-    if (d.getFullYear() !== year || d.getMonth() !== month) return;
-    var key = d.getDate();
-    if (!evMap[key]) evMap[key] = [];
-    var v = APP.videos.find(function(x){ return x.id === id; });
-    if (v) evMap[key].push(v);
-  });
+  // LEFT: settings
+  var left='<div class="panel">';
+  left+='<div class="panel-head">⚙️ Pengaturan Jadwal Massal</div>';
+  left+='<div class="panel-body">';
 
-  var today = new Date();
-  var first = new Date(year, month, 1);
-  var startDay = first.getDay();
-  var daysInMonth = new Date(year, month + 1, 0).getDate();
-  var daysInPrev = new Date(year, month, 0).getDate();
+  // Mode selector
+  left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:8px">Mode Penjadwalan</div>';
+  left+='<div class="mode-opts">';
+  left+='<label class="mode-opt'+(b.mode==='interval'?' selected':'')+'"><input type="radio" name="bmode" value="interval" onchange="setMode(\'interval\')" '+(b.mode==='interval'?'checked':'')+'>'+
+    '<div class="mode-opt-text"><strong>📅 Interval Otomatis</strong><span>1 video per N hari dari tanggal mulai</span></div></label>';
+  left+='<label class="mode-opt'+(b.mode==='custom'?' selected':'')+'"><input type="radio" name="bmode" value="custom" onchange="setMode(\'custom\')" '+(b.mode==='custom'?'checked':'')+'>'+
+    '<div class="mode-opt-text"><strong>🗓 Pilih Tanggal Sendiri</strong><span>Tentukan tanggal berbeda untuk tiap video</span></div></label>';
+  left+='</div>';
 
-  var html = '<div class="cal-nav">' +
-    '<button class="btn btn-sm" onclick="APP.calMonth--;if(APP.calMonth<0){APP.calMonth=11;APP.calYear--;}render()">← Prev</button>' +
-    '<span class="cal-title">' + MONTHS[month] + ' ' + year + '</span>' +
-    '<button class="btn btn-sm" onclick="APP.calMonth++;if(APP.calMonth>11){APP.calMonth=0;APP.calYear++;}render()">Next →</button>' +
-  '</div>';
-  html += '<div class="cal-grid">';
-  DAYS.forEach(function(d){ html += '<div class="cal-head">' + d + '</div>'; });
-
-  for (var i = 0; i < 42; i++) {
-    var day, dim = false;
-    if (i < startDay) { day = daysInPrev - startDay + i + 1; dim = true; }
-    else if (i >= startDay + daysInMonth) { day = i - startDay - daysInMonth + 1; dim = true; }
-    else day = i - startDay + 1;
-    var isToday = !dim && day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
-    var evs = evMap[day] || [];
-    html += '<div class="cal-cell' + (dim ? ' dim' : '') + (isToday ? ' today' : '') + '">' +
-      '<div class="cal-num">' + day + '</div>';
-    evs.slice(0, 2).forEach(function(v) {
-      var t = (v.snippet && v.snippet.title) || 'Video';
-      html += '<div class="cal-event" title="' + esc(t) + '">' + esc(t.length > 18 ? t.slice(0, 16) + '…' : t) + '</div>';
+  if(b.mode==='interval'){
+    left+='<div class="fg"><label>Tanggal Mulai</label><input type="date" id="b-start" min="'+today()+'" value="'+esc(b.startDate||today())+'" oninput="A.bulk.startDate=this.value;render()"></div>';
+    left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Interval</div>';
+    left+='<div class="interval-row">';
+    [1,2,3,7].forEach(function(n){
+      left+='<button class="interval-btn'+(b.interval===n?' sel':'')+'" onclick="setInterval2('+n+')">'+(n===1?'Tiap Hari':n===7?'Tiap Minggu':n+' Hari Sekali')+'</button>';
     });
-    if (evs.length > 2) html += '<div class="cal-more">+' + (evs.length - 2) + ' lagi</div>';
-    html += '</div>';
+    left+='<div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t2)">Custom:<input class="custom-n" type="number" min="1" max="365" value="'+b.customN+'" oninput="A.bulk.customN=parseInt(this.value)||1" id="b-custn">'+
+      '<button class="btn btn-xs" onclick="setInterval2(parseInt(val(\'b-custn\'))||1)">OK</button></div>';
+    left+='</div>';
   }
-  html += '</div>';
-  return html;
-}
 
-function renderDashboard() {
-  var drafts = getDraftVideos();
-  var sched = Object.keys(APP.scheduled).length;
-  var html = '';
-  html += renderChannelBar();
-  html += renderStats();
-  html += '<div class="tabs">' +
-    '<button class="tab' + (APP.tab==='list'?' active':'') + '" onclick="APP.tab=\'list\';render()">📋 Daftar Video</button>' +
-    '<button class="tab' + (APP.tab==='cal'?' active':'') + '" onclick="APP.tab=\'cal\';render()">📅 Kalender</button>' +
-  '</div>';
+  left+='<div class="fg" style="margin-top:12px"><label>Jam Publish (semua video sama) — '+tzLabel()+'</label><input type="time" id="b-time" value="'+esc(b.time)+'" oninput="A.bulk.time=this.value"></div>';
+  left+='</div></div>';
 
-  if (APP.tab === 'list') {
-    html += '<div class="filters">' +
-      '<button class="chip' + (APP.filter==='all'?' active':'') + '" onclick="APP.filter=\'all\';render()">Semua (' + drafts.length + ')</button>' +
-      '<button class="chip' + (APP.filter==='scheduled'?' active':'') + '" onclick="APP.filter=\'scheduled\';render()">✓ Terjadwal (' + sched + ')</button>' +
-      '<button class="chip' + (APP.filter==='unscheduled'?' active':'') + '" onclick="APP.filter=\'unscheduled\';render()">Belum (' + (drafts.length-sched) + ')</button>' +
+  // RIGHT: video selection + preview
+  var right='<div>';
+
+  // Video selection panel
+  right+='<div class="panel" style="margin-bottom:12px">';
+  right+='<div class="panel-head">📋 Pilih Video '+
+    '<button class="btn btn-xs btn-ghost" onclick="selectAllBulk()">'+(selCount===drafts.length&&drafts.length>0?'Batal Semua':'Pilih Semua')+'</button></div>';
+  right+='<div class="panel-body" style="padding:10px">';
+
+  if(!drafts.length){
+    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Tidak ada video draft.</p></div>';
+  }else{
+    right+='<div class="info-blue" style="font-size:11px;margin-bottom:8px">💡 Urutan video di sini = urutan tanggal jadwal. Geser dengan ↑↓ untuk mengatur.</div>';
+    right+='<div class="sel-list">';
+
+    // Show selected first (in order), then unselected
+    var selSet=new Set(b.selected);
+    var orderedList=b.selected.map(function(id){return A.videos.find(function(v){return v.id===id})}).filter(Boolean);
+    var unselected=drafts.filter(function(v){return!selSet.has(v.id)});
+    var allInOrder=orderedList.concat(unselected);
+
+    allInOrder.forEach(function(v,idx){
+      var checked=selSet.has(v.id);
+      var thumb=getThumb(v),title=getTitle(v);
+      var posInSel=b.selected.indexOf(v.id);
+      right+='<div class="sel-row'+(checked?' checked':'')+'" onclick="toggleBulkSel(\''+v.id+'\')">';
+      right+='<input type="checkbox" '+(checked?'checked':'')+' onclick="event.stopPropagation();toggleBulkSel(\''+v.id+'\')">';
+      right+=(thumb?'<img class="sthumb" src="'+esc(thumb.url)+'" alt="" loading="lazy">':'<div class="sthumb-ph">▶</div>');
+      right+='<span class="stitle" title="'+esc(title)+'">'+esc(title)+'</span>';
+      if(checked){
+        right+='<span style="font-size:10px;font-weight:700;color:var(--red);min-width:16px;text-align:center">#'+(posInSel+1)+'</span>';
+        right+='<div class="reorder" onclick="event.stopPropagation()">'+
+          '<button onclick="moveUp(\''+v.id+'\')" '+(posInSel===0?'disabled':'')+'>▲</button>'+
+          '<button onclick="moveDown(\''+v.id+'\')" '+(posInSel===b.selected.length-1?'disabled':'')+'>▼</button>'+
+        '</div>';
+      }
+      right+='</div>';
+    });
+    right+='</div>';
+  }
+  right+='</div></div>';
+
+  // Preview panel
+  right+='<div class="panel">';
+  var preview=selCount>0?(b.mode==='interval'&&(b.startDate||true)?buildIntervalPreview():buildCustomPreviewRows()):'';
+  right+='<div class="panel-head">👁 Preview Jadwal <span style="font-size:11px;color:var(--t3);font-weight:500">'+selCount+' video dipilih</span></div>';
+  right+='<div class="panel-body">';
+
+  if(!selCount){
+    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Pilih video di atas untuk melihat preview jadwal.</p></div>';
+  }else if(b.mode==='interval'){
+    var startVal=b.startDate||today();
+    right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal Publish</th></tr></thead><tbody>';
+    b.selected.forEach(function(id,i){
+      var v=A.videos.find(function(x){return x.id===id});if(!v)return;
+      var dateStr=addDays(startVal,i*b.interval);
+      right+='<tr><td class="pnum">'+(i+1)+'</td><td class="ptitle">'+esc(getTitle(v))+'</td><td class="pdate">'+esc(fmtShort(dateStr))+'</td></tr>';
+    });
+    right+='</tbody></table></div>';
+    right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video akan dijadwalkan mulai '+esc(fmtShort(startVal))+', setiap '+b.interval+' hari, jam '+(b.time||'10:00')+' '+tzLabel()+'</div>';
+  }else{
+    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal untuk masing-masing video. Jam: <b id="b-time-label">'+(b.time||'10:00')+'</b> '+tzLabel()+'</div>';
+    right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal</th></tr></thead><tbody>';
+    b.selected.forEach(function(id,i){
+      var v=A.videos.find(function(x){return x.id===id});if(!v)return;
+      var existing=b.customDates[id]||'';
+      right+='<tr><td class="pnum">'+(i+1)+'</td><td class="ptitle">'+esc(getTitle(v))+'</td>'+
+        '<td class="pdate-custom"><input type="date" id="bc-'+id+'" min="'+today()+'" value="'+esc(existing)+'" oninput="A.bulk.customDates[\''+id+'\']=this.value;var lb=$(' +"'b-time-label'"+');if(lb)lb.textContent=val(\'b-time\')"></td></tr>';
+    });
+    right+='</tbody></table></div>';
+  }
+
+  right+='</div>';
+  if(selCount>0){
+    right+='<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+      '<span style="font-size:12px;color:var(--t3)">'+selCount+' video akan dijadwalkan</span>'+
+      '<button class="btn btn-red" id="bulk-apply" onclick="saveBulkValues()">🚀 Terapkan Jadwal</button>'+
     '</div>';
-    html += renderVideoList();
-  } else {
-    html += renderCalendar();
   }
-  return html;
+  right+='</div></div>';
+
+  return'<div class="bulk-wrap">'+left+right+'</div>';
 }
 
-function renderScheduleModal() {
-  var isBulk = APP.modal === 'bulk';
-  var title = isBulk
-    ? 'Jadwalkan ' + APP.selected.size + ' Video'
-    : ((APP.modalVideo && APP.modalVideo.snippet && APP.modalVideo.snippet.title) || 'Video');
-  var offset = getLocalOffset();
-  var tzLabel = APP.schedTimezone + ' (UTC' + (offset >= 0 ? '+' : '') + offset + ')';
-  var minDate = new Date().toISOString().split('T')[0];
-  return '<div class="overlay" onclick="if(event.target===this)APP.modal=null,render()">' +
-    '<div class="modal">' +
-      '<h3>📅 ' + esc(isBulk ? 'Jadwalkan ' + APP.selected.size + ' Video' : 'Jadwalkan Video') + '</h3>' +
-      '<div class="subtitle">' + esc(title) + '</div>' +
-      '<div class="form-row">' +
-        '<div class="form-group"><label>Tanggal</label><input id="s-date" type="date" min="' + minDate + '" value="' + esc(APP.schedDate) + '"></div>' +
-        '<div class="form-group"><label>Waktu</label><input id="s-time" type="time" value="' + esc(APP.schedTime) + '"></div>' +
-      '</div>' +
-      '<div class="tz-hint">⏱ Waktu dalam timezone lokalmu: <b>' + esc(tzLabel) + '</b></div>' +
-      (isBulk ? '<div class="info-box" style="margin-top:10px">⚠️ Semua ' + APP.selected.size + ' video akan dijadwalkan di waktu yang sama. Kamu bisa ubah jadwal masing-masing video nanti.</div>' : '') +
-      '<div class="modal-footer">' +
-        '<button class="btn" onclick="APP.modal=null;render()">Batal</button>' +
-        '<button class="btn btn-red" id="btn-save-sched" onclick="scheduleVideo()">Simpan Jadwal</button>' +
-      '</div>' +
-    '</div>' +
+function buildIntervalPreview(){return[]}
+function buildCustomPreviewRows(){return[]}
+
+function saveBulkValues(){
+  // Sync all form values before applying
+  A.bulk.startDate=val('b-start')||A.bulk.startDate||today();
+  A.bulk.time=val('b-time')||A.bulk.time;
+  if(A.bulk.mode==='custom'){
+    A.bulk.selected.forEach(function(id){var v=val('bc-'+id);if(v)A.bulk.customDates[id]=v;});
+  }
+  applyBulk();
+}
+
+/* Calendar tab */
+function renderCalendar(){
+  var MONTHS=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  var DAYS=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  var y=A.calY,m=A.calM;
+  var ev={};
+  Object.entries(A.scheduled).forEach(function(e){
+    var d=new Date(e[1]);
+    if(d.getFullYear()!==y||d.getMonth()!==m)return;
+    var k=d.getDate();if(!ev[k])ev[k]=[];
+    var v=A.videos.find(function(x){return x.id===e[0]});if(v)ev[k].push(v);
+  });
+  var td=new Date(),first=new Date(y,m,1),sd=first.getDay(),dim=new Date(y,m+1,0).getDate(),pp=new Date(y,m,0).getDate();
+  var h='<div class="cal-nav">'+
+    '<button class="btn btn-sm" onclick="A.calM--;if(A.calM<0){A.calM=11;A.calY--;}render()">← Prev</button>'+
+    '<span class="cal-title">'+MONTHS[m]+' '+y+'</span>'+
+    '<button class="btn btn-sm" onclick="A.calM++;if(A.calM>11){A.calM=0;A.calY++;}render()">Next →</button>'+
+  '</div><div class="cal-grid">';
+  DAYS.forEach(function(d){h+='<div class="cal-head">'+d+'</div>';});
+  for(var i=0;i<42;i++){
+    var day,off=false;
+    if(i<sd){day=pp-sd+i+1;off=true;}
+    else if(i>=sd+dim){day=i-sd-dim+1;off=true;}
+    else day=i-sd+1;
+    var isT=!off&&day===td.getDate()&&m===td.getMonth()&&y===td.getFullYear();
+    var evs=ev[day]||[];
+    h+='<div class="cal-cell'+(off?' dim':'')+(isT?' today':'')+'"><div class="cal-num">'+day+'</div>';
+    evs.slice(0,2).forEach(function(v){var t=getTitle(v);h+='<div class="cal-ev" title="'+esc(t)+'">'+esc(t.length>16?t.slice(0,14)+'…':t)+'</div>';});
+    if(evs.length>2)h+='<div class="cal-more">+' +(evs.length-2)+' lagi</div>';
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+
+function renderDashboard(){
+  var h=renderChBar()+renderStats();
+  h+='<div class="tabs">'+
+    '<button class="tab'+(A.tab==='list'?' active':'')+'" onclick="A.tab=\'list\';A.openPanel=null;render()">📋 Per Video</button>'+
+    '<button class="tab'+(A.tab==='bulk'?' active':'')+'" onclick="A.tab=\'bulk\';A.openPanel=null;render()">🚀 Jadwal Massal</button>'+
+    '<button class="tab'+(A.tab==='cal'?' active':'')+'" onclick="A.tab=\'cal\';render()">📅 Kalender</button>'+
   '</div>';
+  if(A.tab==='list')h+=renderPerVideo();
+  else if(A.tab==='bulk')h+=renderBulk();
+  else h+=renderCalendar();
+  return h;
 }
 
-function renderAddChannelModal() {
-  var colorSwatches = COLORS.map(function(c) {
-    return '<div class="color-swatch' + (APP.newCh.color === c ? ' selected' : '') + '" style="background:' + c + '" onclick="APP.newCh.color=\'' + c + '\';render()" title="' + c + '"></div>';
-  }).join('');
-  return '<div class="overlay" onclick="if(event.target===this)APP.modal=null,render()">' +
-    '<div class="modal add-channel-modal">' +
-      '<h3>➕ Tambah Channel</h3>' +
-      '<div class="subtitle">Tambahkan YouTube channel lain ke scheduler</div>' +
-      '<div class="form-group"><label>Nama Channel</label><input id="new-ch-name" type="text" placeholder="Contoh: Channel Gaming" value="' + esc(APP.newCh.name) + '"></div>' +
-      '<div class="form-group"><label>OAuth Client ID</label><input id="new-ch-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="' + esc(APP.newCh.clientId) + '"></div>' +
-      '<div class="form-group"><label>Warna Label</label><div class="color-row">' + colorSwatches + '</div></div>' +
-      '<div class="modal-footer">' +
-        '<button class="btn" onclick="APP.modal=null;render()">Batal</button>' +
-        '<button class="btn btn-red" onclick="APP.newCh.name=val(\'new-ch-name\');APP.newCh.clientId=val(\'new-ch-cid\');addChannel()">Hubungkan →</button>' +
-      '</div>' +
-    '</div>' +
-  '</div>';
+function renderAddChModal(){
+  var sw=COLORS.map(function(c){return'<div class="cswatch'+(A.newCh.color===c?' sel':'')+'" style="background:'+c+'" onclick="A.newCh.color=\''+c+'\';render()"></div>';}).join('');
+  return'<div class="overlay" onclick="if(event.target===this){A.modal=null;render()}">'+
+    '<div class="modal"><h3>➕ Tambah Channel Baru</h3>'+
+    '<div class="fg"><label>Nama Channel</label><input id="nc-name" type="text" placeholder="Channel Gaming" value="'+esc(A.newCh.name)+'"></div>'+
+    '<div class="fg"><label>OAuth Client ID</label><input id="nc-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(A.newCh.cid)+'"></div>'+
+    '<div class="fg"><label>Warna Label</label><div class="color-row">'+sw+'</div></div>'+
+    '<div class="modal-footer"><button class="btn btn-sm" onclick="A.modal=null;render()">Batal</button>'+
+    '<button class="btn btn-red btn-sm" onclick="A.newCh.name=val(\'nc-name\');A.newCh.cid=val(\'nc-cid\');addChannel()">Hubungkan →</button></div>'+
+    '</div></div>';
 }
 
-function render() {
-  var root = $('root');
-  if (!root) return;
-  var html = '';
-
-  if (APP.step === 'setup') html = renderSetup();
-  else if (APP.step === 'loading') html = '<div class="loader"><div class="spinner"></div> Memuat video dari YouTube...</div>';
-  else if (APP.step === 'dashboard') html = renderDashboard();
-
-  if (APP.modal === 'schedule' || APP.modal === 'bulk') html += renderScheduleModal();
-  if (APP.modal === 'addChannel') html += renderAddChannelModal();
-
-  root.innerHTML = html;
-  renderHeader();
+function render(){
+  var root=$('root');if(!root)return;
+  var h='';
+  if(A.step==='setup')h=renderSetup();
+  else if(A.step==='loading')h='<div class="loader"><div class="spinner"></div> Memuat video dari YouTube...</div>';
+  else if(A.step==='dashboard')h=renderDashboard();
+  if(A.modal==='addch')h+=renderAddChModal();
+  root.innerHTML=h;renderHeader();
 }
 
-// Boot
-if (APP.channels.length === 0) {
-  APP.step = 'setup';
-}
+if(!A.channels.length)A.step='setup';
 render();
 </script>
 </body>
