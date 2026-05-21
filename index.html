@@ -281,6 +281,7 @@ var A={
   newCh:{name:'',cid:'',color:'#FF0000'},
   calM:new Date().getMonth(),calY:new Date().getFullYear(),
   bulk:{
+    subTab:'unsched',  // 'unsched' | 'sched'
     mode:'interval',
     interval:1,
     customN:3,
@@ -510,9 +511,9 @@ function toggleBulkSel(id){
   render();
 }
 function selectAllBulk(){
-  var drafts=getDrafts();
-  if(A.bulk.selected.length===drafts.length)A.bulk.selected=[];
-  else A.bulk.selected=drafts.map(function(v){return v.id});
+  var unscheduled=getDrafts().filter(function(v){return!A.scheduled[v.id]});
+  if(A.bulk.selected.length===unscheduled.length&&unscheduled.length>0)A.bulk.selected=[];
+  else A.bulk.selected=unscheduled.map(function(v){return v.id});
   render();
 }
 function moveUp(id){
@@ -882,15 +883,82 @@ function renderPerVideo(){
 
 /* Bulk scheduler tab */
 function renderBulk(){
-  var drafts=getDrafts(),b=A.bulk;
+  var b=A.bulk;
+  var allDrafts=getDrafts();
+  var unscheduled=allDrafts.filter(function(v){return!A.scheduled[v.id]});
+  var scheduled=allDrafts.filter(function(v){return!!A.scheduled[v.id]});
+
+  // Sort scheduled by date ascending
+  scheduled.sort(function(a,b){return new Date(A.scheduled[a.id])-new Date(A.scheduled[b.id])});
+
+  // Sub-tab bar
+  var h='<div style="display:flex;gap:0;margin-bottom:1.25rem;border-bottom:1px solid var(--border)">';
+  h+='<button class="tab'+(b.subTab==='unsched'?' active':'')+'" onclick="A.bulk.subTab=\'unsched\';render()">'+
+    '📋 Belum Dijadwalkan <span style="background:var(--orange-bg);color:var(--orange);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">'+unscheduled.length+'</span></button>';
+  h+='<button class="tab'+(b.subTab==='sched'?' active':'')+'" onclick="A.bulk.subTab=\'sched\';render()">'+
+    '✅ Sudah Terjadwal <span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">'+scheduled.length+'</span></button>';
+  h+='</div>';
+
+  if(b.subTab==='sched'){
+    h+=renderBulkScheduled(scheduled);
+  } else {
+    h+=renderBulkUnsched(unscheduled,b);
+  }
+  return h;
+}
+
+function renderBulkScheduled(scheduled){
+  var h='';
+  if(!scheduled.length){
+    return'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div><p style="font-size:13px">Belum ada video yang terjadwal.</p></div>';
+  }
+
+  // Summary info
+  h+='<div class="info-green" style="margin-bottom:12px">'+
+    '✅ <b>'+scheduled.length+' video</b> sudah terjadwal. Klik <b>Ubah</b> untuk mengganti tanggal, atau <b>Hapus</b> untuk membatalkan jadwal.'+
+  '</div>';
+
+  h+='<div style="overflow-x:auto"><table class="ptable" style="width:100%">';
+  h+='<thead><tr><th class="pnum">#</th><th>Video</th><th>Jadwal Publish</th><th style="width:110px">Aksi</th></tr></thead><tbody>';
+
+  scheduled.forEach(function(v,i){
+    var iso=A.scheduled[v.id];
+    var thumb=getThumb(v),title=getTitle(v);
+    var isSn=isSoon(iso);
+    var dateLabel=fmtDate(iso);
+    h+='<tr>';
+    h+='<td class="pnum">'+(i+1)+'</td>';
+    h+='<td style="vertical-align:middle">';
+    h+='<div style="display:flex;align-items:center;gap:8px">';
+    h+=(thumb?'<img src="'+esc(thumb.url)+'" style="width:56px;height:32px;object-fit:cover;border-radius:3px;flex-shrink:0" loading="lazy">':'<div style="width:56px;height:32px;background:var(--hover);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">▶</div>');
+    h+='<span class="ptitle" style="max-width:180px" title="'+esc(title)+'">'+esc(title)+'</span>';
+    h+='</div></td>';
+    h+='<td><span class="badge '+(isSn?'b-soon':'b-sched')+'" style="font-size:11px">'+(isSn?'⏰ ':'')+esc(dateLabel)+'</span></td>';
+    h+='<td>';
+    h+='<div style="display:flex;gap:4px">';
+    h+='<button class="btn btn-xs" onclick="openPanel(\''+v.id+'\');A.tab=\'list\';render()" title="Ubah jadwal">✏</button>';
+    h+='<button class="btn btn-xs" style="color:var(--red)" onclick="doUnschedule(\''+v.id+'\')" title="Hapus jadwal">✕</button>';
+    h+='</div>';
+    h+='</td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+
+  // Bulk unschedule all
+  h+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">';
+  h+='<button class="btn btn-sm" style="color:var(--red);border-color:var(--red-b)" onclick="confirmUnscheduleAll()">✕ Hapus Semua Jadwal</button>';
+  h+='</div>';
+  return h;
+}
+
+function renderBulkUnsched(unscheduled,b){
   var selCount=b.selected.length;
+  var h='<div class="bulk-wrap">';
 
   // LEFT: settings
   var left='<div class="panel">';
   left+='<div class="panel-head">⚙️ Pengaturan Jadwal Massal</div>';
   left+='<div class="panel-body">';
-
-  // Mode selector
   left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:8px">Mode Penjadwalan</div>';
   left+='<div class="mode-opts">';
   left+='<label class="mode-opt'+(b.mode==='interval'?' selected':'')+'"><input type="radio" name="bmode" value="interval" onchange="setMode(\'interval\')" '+(b.mode==='interval'?'checked':'')+'>'+
@@ -898,7 +966,6 @@ function renderBulk(){
   left+='<label class="mode-opt'+(b.mode==='custom'?' selected':'')+'"><input type="radio" name="bmode" value="custom" onchange="setMode(\'custom\')" '+(b.mode==='custom'?'checked':'')+'>'+
     '<div class="mode-opt-text"><strong>🗓 Pilih Tanggal Sendiri</strong><span>Tentukan tanggal berbeda untuk tiap video</span></div></label>';
   left+='</div>';
-
   if(b.mode==='interval'){
     left+='<div class="fg"><label>Tanggal Mulai</label><input type="date" id="b-start" min="'+today()+'" value="'+esc(b.startDate||tomorrow())+'" oninput="A.bulk.startDate=this.value;render()"></div>';
     left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Interval</div>';
@@ -910,32 +977,30 @@ function renderBulk(){
       '<button class="btn btn-xs" onclick="setInterval2(parseInt(val(\'b-custn\'))||1)">OK</button></div>';
     left+='</div>';
   }
-
   left+='<div class="fg" style="margin-top:12px"><label>Jam Publish — '+tzLabel()+' (waktu lokal)</label><input type="time" id="b-time" value="'+esc(b.time)+'" oninput="A.bulk.time=this.value"></div>';
   left+='</div></div>';
 
   // RIGHT: video selection + preview
   var right='<div>';
-
-  // Video selection panel
   right+='<div class="panel" style="margin-bottom:12px">';
-  right+='<div class="panel-head">📋 Pilih Video '+
-    '<button class="btn btn-xs btn-ghost" onclick="selectAllBulk()">'+(selCount===drafts.length&&drafts.length>0?'Batal Semua':'Pilih Semua')+'</button></div>';
+  right+='<div class="panel-head">📋 Pilih Video yang Akan Dijadwalkan '+
+    '<button class="btn btn-xs btn-ghost" onclick="selectAllBulk()">'+(selCount===unscheduled.length&&unscheduled.length>0?'Batal Semua':'Pilih Semua')+'</button></div>';
   right+='<div class="panel-body" style="padding:10px">';
 
-  if(!drafts.length){
-    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Tidak ada video draft.</p></div>';
+  if(!unscheduled.length){
+    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Semua draft sudah terjadwal! 🎉</p>'+
+      '<p style="font-size:12px;color:var(--t3);margin-top:6px">Lihat tab <b>Sudah Terjadwal</b> untuk kelola jadwal yang ada.</p></div>';
   }else{
-    right+='<div class="info-blue" style="font-size:11px;margin-bottom:8px">💡 Urutan video di sini = urutan tanggal jadwal. Geser dengan ↑↓ untuk mengatur.</div>';
+    right+='<div class="info-blue" style="font-size:11px;margin-bottom:8px">💡 Hanya video <b>belum dijadwalkan</b> yang tampil di sini. Urutan = urutan tanggal publish. Atur dengan ↑↓.</div>';
     right+='<div class="sel-list">';
-
-    // Show selected first (in order), then unselected
     var selSet=new Set(b.selected);
-    var orderedList=b.selected.map(function(id){return A.videos.find(function(v){return v.id===id})}).filter(Boolean);
-    var unselected=drafts.filter(function(v){return!selSet.has(v.id)});
-    var allInOrder=orderedList.concat(unselected);
+    // Only show unscheduled videos
+    var orderedSel=b.selected.filter(function(id){return unscheduled.find(function(v){return v.id===id})});
+    var orderedList=orderedSel.map(function(id){return A.videos.find(function(v){return v.id===id})}).filter(Boolean);
+    var unsel=unscheduled.filter(function(v){return!selSet.has(v.id)});
+    var allInOrder=orderedList.concat(unsel);
 
-    allInOrder.forEach(function(v,idx){
+    allInOrder.forEach(function(v){
       var checked=selSet.has(v.id);
       var thumb=getThumb(v),title=getTitle(v);
       var posInSel=b.selected.indexOf(v.id);
@@ -958,12 +1023,10 @@ function renderBulk(){
 
   // Preview panel
   right+='<div class="panel">';
-  var preview=selCount>0?(b.mode==='interval'&&(b.startDate||true)?buildIntervalPreview():buildCustomPreviewRows()):'';
   right+='<div class="panel-head">👁 Preview Jadwal <span style="font-size:11px;color:var(--t3);font-weight:500">'+selCount+' video dipilih</span></div>';
   right+='<div class="panel-body">';
-
   if(!selCount){
-    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Pilih video di atas untuk melihat preview jadwal.</p></div>';
+    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Pilih video di atas untuk melihat preview.</p></div>';
   }else if(b.mode==='interval'){
     var startVal=b.startDate||tomorrow();
     right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal Publish</th></tr></thead><tbody>';
@@ -973,19 +1036,18 @@ function renderBulk(){
       right+='<tr><td class="pnum">'+(i+1)+'</td><td class="ptitle">'+esc(getTitle(v))+'</td><td class="pdate">'+esc(fmtShort(dateStr))+'</td></tr>';
     });
     right+='</tbody></table></div>';
-    right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video akan dijadwalkan mulai '+esc(fmtShort(startVal))+', setiap '+b.interval+' hari, jam '+(b.time||'10:00')+' '+tzLabel()+'</div>';
+    right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video dijadwalkan mulai <b>'+esc(fmtShort(startVal))+'</b>, setiap <b>'+b.interval+' hari</b>, jam <b>'+(b.time||'00:00')+' '+tzLabel()+'</b></div>';
   }else{
-    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal untuk masing-masing video. Jam: <b id="b-time-label">'+(b.time||'00:00')+'</b> '+tzLabel()+'</div>';
+    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal masing-masing video. Jam: <b id="b-time-label">'+(b.time||'00:00')+'</b> '+tzLabel()+'</div>';
     right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal</th></tr></thead><tbody>';
     b.selected.forEach(function(id,i){
       var v=A.videos.find(function(x){return x.id===id});if(!v)return;
       var existing=b.customDates[id]||'';
       right+='<tr><td class="pnum">'+(i+1)+'</td><td class="ptitle">'+esc(getTitle(v))+'</td>'+
-        '<td class="pdate-custom"><input type="date" id="bc-'+id+'" min="'+today()+'" value="'+esc(existing)+'" oninput="A.bulk.customDates[\''+id+'\']=this.value;var lb=$(' +"'b-time-label'"+');if(lb)lb.textContent=val(\'b-time\')"></td></tr>';
+        '<td class="pdate-custom"><input type="date" id="bc-'+id+'" min="'+today()+'" value="'+esc(existing)+'" oninput="A.bulk.customDates[\''+id+'\']=this.value"></td></tr>';
     });
     right+='</tbody></table></div>';
   }
-
   right+='</div>';
   if(selCount>0){
     right+='<div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">'+
@@ -995,8 +1057,21 @@ function renderBulk(){
   }
   right+='</div></div>';
 
-  return'<div class="bulk-wrap">'+left+right+'</div>';
+  h+=left+right+'</div>';
+  return h;
 }
+
+async function confirmUnscheduleAll(){
+  var scheduled=getDrafts().filter(function(v){return!!A.scheduled[v.id]});
+  if(!scheduled.length)return;
+  if(!confirm('Hapus jadwal untuk SEMUA '+scheduled.length+' video? Tindakan ini tidak bisa dibatalkan.'))return;
+  var ok=0;
+  for(var i=0;i<scheduled.length;i++){
+    try{await apiUnset(scheduled[i].id);delete A.scheduled[scheduled[i].id];ok++;}catch(e){}
+  }
+  saveSched();toast(ok+' jadwal berhasil dihapus','inf');render();
+}
+
 
 function buildIntervalPreview(){return[]}
 function buildCustomPreviewRows(){return[]}
