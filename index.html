@@ -490,25 +490,69 @@ function renderPickChannel(){
 
 async function fetchVideos(){
   try{
-    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',{headers:{Authorization:'Bearer '+A.token}});
-    var d1=await r1.json();
-    if(d1.error)throw new Error(d1.error.message);
-    if(!d1.items||!d1.items.length){A.videos=[];A.step='dashboard';render();return;}
-    var ids=d1.items.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
-    var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,{headers:{Authorization:'Bearer '+A.token}});
-    var d2=await r2.json();
-    if(d2.error)throw new Error(d2.error.message);
-    A.videos=d2.items||[];
-    A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
-    saveSched();A.step='dashboard';render();
+    // Step 1: Ambil upload playlist ID dari channel aktif
+    var rc=await fetch('https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet&mine=true',
+      {headers:{Authorization:'Bearer '+A.token}});
+    var dc=await rc.json();
+    if(dc.error)throw new Error('channels: '+dc.error.message);
+    if(!dc.items||!dc.items.length)throw new Error('Tidak ada channel ditemukan untuk akun ini. Pastikan akun Google ini memiliki channel YouTube.');
+
+    var channel=dc.items[0];
+    var uploadsId=channel.contentDetails&&channel.contentDetails.relatedPlaylists&&channel.contentDetails.relatedPlaylists.uploads;
+    if(!uploadsId)throw new Error('Upload playlist tidak ditemukan di channel ini.');
+
+    // Update ytSelectedChannel dari data aktual
+    if(!A.ytSelectedChannel)A.ytSelectedChannel=channel;
+
+    // Step 2: Ambil video dari uploads playlist (termasuk private/unlisted)
+    var allItems=[];
+    var pageToken='';
+    var maxPages=3; // max 150 video (3 x 50)
+    for(var p=0;p<maxPages;p++){
+      var url='https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+uploadsId+'&maxResults=50'+(pageToken?'&pageToken='+pageToken:'');
+      var rp=await fetch(url,{headers:{Authorization:'Bearer '+A.token}});
+      var dp=await rp.json();
+      if(dp.error)throw new Error('playlistItems: '+dp.error.message);
+      allItems=allItems.concat(dp.items||[]);
+      if(!dp.nextPageToken)break;
+      pageToken=dp.nextPageToken;
+    }
+
+    if(!allItems.length){A.videos=[];A.step='dashboard';render();return;}
+
+    // Step 3: Ambil detail status setiap video (batch per 50)
+    var allVideos=[];
+    for(var start=0;start<allItems.length;start+=50){
+      var batch=allItems.slice(start,start+50);
+      var ids=batch.map(function(i){
+        return (i.contentDetails&&i.contentDetails.videoId)||
+               (i.snippet&&i.snippet.resourceId&&i.snippet.resourceId.videoId)||'';
+      }).filter(Boolean).join(',');
+      if(!ids)continue;
+      var rv=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
+        {headers:{Authorization:'Bearer '+A.token}});
+      var dv=await rv.json();
+      if(dv.error)throw new Error('videos: '+dv.error.message);
+      allVideos=allVideos.concat(dv.items||[]);
+    }
+
+    A.videos=allVideos;
+    // Sync scheduledAt dari API
+    A.videos.forEach(function(v){
+      if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;
+    });
+    saveSched();
+    A.step='dashboard';
+    render();
+    toast('✓ '+allVideos.length+' video dimuat dari channel','ok');
+
   }catch(e){
     var msg=e.message||'Unknown error';
-    // Cek error umum
-    if(msg.includes('403'))msg='Akses ditolak (403) — pastikan YouTube Data API v3 sudah diaktifkan di Google Cloud Console';
-    else if(msg.includes('401'))msg='Token tidak valid (401) — coba Sign In ulang';
-    else if(msg.includes('quota'))msg='Quota API habis — coba lagi besok atau gunakan Client ID lain';
+    if(msg.includes('403'))msg='Akses ditolak (403) — pastikan YouTube Data API v3 sudah diaktifkan';
+    else if(msg.includes('401'))msg='Token tidak valid — coba Sign In ulang';
+    else if(msg.includes('quota'))msg='Quota API habis — coba lagi besok atau ganti Client ID';
     toast('Gagal memuat video: '+msg,'err');
-    A.step='setup';render();
+    A.step='pick_channel';render();
   }
 }
 async function apiSet(videoId,publishAt){
@@ -642,13 +686,15 @@ function delChannel(id){
   render();toast('Channel dihapus','inf');
 }
 function getDrafts(){
-  // Tampilkan: private, unlisted, ATAU video yg uploadStatus-nya belum 'processed'
+  // Tampilkan semua video yang bisa dijadwalkan:
+  // private (draft/scheduled), unlisted, atau belum selesai upload
+  // KECUALI: sudah public dan tidak punya jadwal publish
   return A.videos.filter(function(v){
     var s=v.status||{};
-    var isPrivate=s.privacyStatus==='private';
-    var isUnlisted=s.privacyStatus==='unlisted';
-    var isNotProcessed=s.uploadStatus&&s.uploadStatus!=='processed';
-    return isPrivate||isUnlisted||isNotProcessed;
+    if(s.privacyStatus==='private')return true;
+    if(s.privacyStatus==='unlisted')return true;
+    if(s.uploadStatus&&s.uploadStatus!=='processed')return true;
+    return false;
   });
 }
 function getFiltered(){
