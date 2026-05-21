@@ -281,6 +281,8 @@ var A={
   newCh:{name:'',cid:'',color:'#FF0000'},
   calM:new Date().getMonth(),calY:new Date().getFullYear(),
   ytChannels:[],ytSelectedChannel:null,
+  hidden:{},  // videoId -> true (disembunyikan dari daftar)
+  showHidden:false,
   bulk:{
     subTab:'unsched',  // 'unsched' | 'sched'
     mode:'interval',
@@ -313,6 +315,8 @@ function saveCh(){
   localStorage.setItem('yt_ch',JSON.stringify(toSave));
 }
 function saveSched(){if(!A.active)return;localStorage.setItem('yt_sc_'+A.active.id,JSON.stringify(A.scheduled))}
+function saveHidden(){if(!A.active)return;localStorage.setItem('yt_hid_'+A.active.id,JSON.stringify(A.hidden))}
+function loadHidden(ch){try{return JSON.parse(localStorage.getItem('yt_hid_'+ch.id)||'{}')}catch(e){return{}}}
 function loadSched(ch){try{return JSON.parse(localStorage.getItem('yt_sc_'+ch.id)||'{}')}catch(e){return{}}}
 function tzOffset(){return-new Date().getTimezoneOffset()/60}
 function tzLabel(){
@@ -387,7 +391,7 @@ async function signIn(ch, cidIdxOverride){
         }
         A.token=r.access_token;
         A.tokenExpiry=Date.now()+(r.expires_in||3600)*1000;
-        A.active=ch;A.scheduled=loadSched(ch);
+        A.active=ch;A.scheduled=loadSched(ch);A.hidden=loadHidden(ch);
         A.step='loading';render();await pickChannel();
       }
     }).requestAccessToken({prompt:'select_account'});
@@ -490,68 +494,25 @@ function renderPickChannel(){
 
 async function fetchVideos(){
   try{
-    // Step 1: Ambil upload playlist ID dari channel aktif
-    var rc=await fetch('https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet&mine=true',
+    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',
       {headers:{Authorization:'Bearer '+A.token}});
-    var dc=await rc.json();
-    if(dc.error)throw new Error('channels: '+dc.error.message);
-    if(!dc.items||!dc.items.length)throw new Error('Tidak ada channel ditemukan untuk akun ini. Pastikan akun Google ini memiliki channel YouTube.');
-
-    var channel=dc.items[0];
-    var uploadsId=channel.contentDetails&&channel.contentDetails.relatedPlaylists&&channel.contentDetails.relatedPlaylists.uploads;
-    if(!uploadsId)throw new Error('Upload playlist tidak ditemukan di channel ini.');
-
-    // Update ytSelectedChannel dari data aktual
-    if(!A.ytSelectedChannel)A.ytSelectedChannel=channel;
-
-    // Step 2: Ambil video dari uploads playlist (termasuk private/unlisted)
-    var allItems=[];
-    var pageToken='';
-    var maxPages=3; // max 150 video (3 x 50)
-    for(var p=0;p<maxPages;p++){
-      var url='https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+uploadsId+'&maxResults=50'+(pageToken?'&pageToken='+pageToken:'');
-      var rp=await fetch(url,{headers:{Authorization:'Bearer '+A.token}});
-      var dp=await rp.json();
-      if(dp.error)throw new Error('playlistItems: '+dp.error.message);
-      allItems=allItems.concat(dp.items||[]);
-      if(!dp.nextPageToken)break;
-      pageToken=dp.nextPageToken;
-    }
-
-    if(!allItems.length){A.videos=[];A.step='dashboard';render();return;}
-
-    // Step 3: Ambil detail status setiap video (batch per 50)
-    var allVideos=[];
-    for(var start=0;start<allItems.length;start+=50){
-      var batch=allItems.slice(start,start+50);
-      var ids=batch.map(function(i){
-        return (i.contentDetails&&i.contentDetails.videoId)||
-               (i.snippet&&i.snippet.resourceId&&i.snippet.resourceId.videoId)||'';
-      }).filter(Boolean).join(',');
-      if(!ids)continue;
-      var rv=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
-        {headers:{Authorization:'Bearer '+A.token}});
-      var dv=await rv.json();
-      if(dv.error)throw new Error('videos: '+dv.error.message);
-      allVideos=allVideos.concat(dv.items||[]);
-    }
-
-    A.videos=allVideos;
-    // Sync scheduledAt dari API
-    A.videos.forEach(function(v){
-      if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;
-    });
-    saveSched();
-    A.step='dashboard';
-    render();
-    toast('✓ '+allVideos.length+' video dimuat dari channel','ok');
-
+    var d1=await r1.json();
+    if(d1.error)throw new Error(d1.error.message);
+    if(!d1.items||!d1.items.length){A.videos=[];A.step='dashboard';render();return;}
+    var ids=d1.items.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
+    var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
+      {headers:{Authorization:'Bearer '+A.token}});
+    var d2=await r2.json();
+    if(d2.error)throw new Error(d2.error.message);
+    A.videos=d2.items||[];
+    A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
+    saveSched();A.step='dashboard';render();
   }catch(e){
-    var msg=e.message||'Unknown error';
-    if(msg.includes('403'))msg='Akses ditolak (403) — pastikan YouTube Data API v3 sudah diaktifkan';
+    var msg=e.message||'';
+    if(msg.includes('403'))msg='Akses ditolak — pastikan YouTube Data API v3 aktif di Google Cloud';
     else if(msg.includes('401'))msg='Token tidak valid — coba Sign In ulang';
     else if(msg.includes('quota'))msg='Quota API habis — coba lagi besok atau ganti Client ID';
-    toast('Gagal memuat video: '+msg,'err');
+    toast('Gagal memuat: '+msg,'err');
     A.step='pick_channel';render();
   }
 }
@@ -669,7 +630,9 @@ function setMode(m){
 }
 
 /* ─ Misc ─ */
-function signOut(){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;A.ytChannels=[];A.ytSelectedChannel=null;render();toast('Signed out','inf');}
+function hideVideo(id){A.hidden[id]=true;saveHidden();render();}
+function unhideVideo(id){delete A.hidden[id];saveHidden();render();}
+function signOut(){A.token='';A.videos=[];A.scheduled={};A.hidden={};A.step='setup';A.active=null;A.ytChannels=[];A.ytSelectedChannel=null;render();toast('Signed out','inf');}
 async function refresh(){A.step='loading';render();await fetchVideos();}
 function switchCh(ch){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;render();setTimeout(function(){signIn(ch)},100);}
 function addChannel(){
@@ -686,17 +649,33 @@ function delChannel(id){
   render();toast('Channel dihapus','inf');
 }
 function getDrafts(){
-  // Tampilkan semua video yang bisa dijadwalkan:
-  // private (draft/scheduled), unlisted, atau belum selesai upload
-  // KECUALI: sudah public dan tidak punya jadwal publish
+  // search.list?forMine=true sudah hanya return video milik channel aktif
+  // Filter: private (draft & scheduled) dan unlisted
+  // Video public tidak masuk karena search?forMine hanya return yg bisa diakses owner
   return A.videos.filter(function(v){
     var s=v.status||{};
-    if(s.privacyStatus==='private')return true;
-    if(s.privacyStatus==='unlisted')return true;
-    if(s.uploadStatus&&s.uploadStatus!=='processed')return true;
-    return false;
+    if(A.hidden[v.id])return false;
+    return s.privacyStatus==='private'||s.privacyStatus==='unlisted';
   });
 }
+
+function renderHiddenList(){
+  var hiddenVideos=A.videos.filter(function(v){return A.hidden[v.id]});
+  if(!hiddenVideos.length)return'';
+  var h='<div style="margin-bottom:10px;padding:10px 12px;background:var(--hover);border-radius:var(--r2);border:1px solid var(--border)">';
+  h+='<div style="font-size:11px;font-weight:700;color:var(--t3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Video Tersembunyi</div>';
+  hiddenVideos.forEach(function(v){
+    var title=getTitle(v);
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">';
+    h+='<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t2)">'+esc(title)+'</span>';
+    h+='<button class="btn btn-xs btn-ghost" onclick="unhideVideo(\''+v.id+'\')" style="font-size:11px;color:var(--blue);flex-shrink:0">Tampilkan</button>';
+    h+='</div>';
+  });
+  h+='<div style="margin-top:8px"><button class="btn btn-xs btn-ghost" onclick="Object.keys(A.hidden).forEach(function(id){delete A.hidden[id]});saveHidden();render()">Tampilkan Semua</button></div>';
+  h+='</div>';
+  return h;
+}
+
 function getFiltered(){
   var d=getDrafts();
   if(A.filter==='scheduled')return d.filter(function(v){return A.scheduled[v.id]});
@@ -976,11 +955,14 @@ function renderStats(){
 /* Per-video tab */
 function renderPerVideo(){
   var filtered=getFiltered(),d=getDrafts(),sc=Object.keys(A.scheduled).length;
+  var hiddenCount=Object.keys(A.hidden).length;
   var h='<div class="filters">'+
     '<button class="chip'+(A.filter==='all'?' active':'')+'" onclick="A.filter=\'all\';render()">Semua ('+d.length+')</button>'+
     '<button class="chip'+(A.filter==='scheduled'?' active':'')+'" onclick="A.filter=\'scheduled\';render()">✓ Terjadwal ('+sc+')</button>'+
-    '<button class="chip'+(A.filter==='unscheduled'?' active':'')+'" onclick="A.filter=\'unscheduled\';render()">Belum ('+(d.length-sc)+')</button>'+
-  '</div>';
+    '<button class="chip'+(A.filter==='unscheduled'?' active':'')+'" onclick="A.filter=\'unscheduled\';render()">Draft ('+(d.length-sc)+')</button>'+
+    (hiddenCount?'<button class="chip" onclick="A.showHidden=!A.showHidden;render()" style="margin-left:auto;font-size:11px">'+
+      (A.showHidden?'▲':'▼')+' Tersembunyi ('+hiddenCount+')</button>':'')+'</div>'+
+    (A.showHidden&&hiddenCount?renderHiddenList():'');
   if(!filtered.length){
     var allCount=A.videos.length;
     return h+'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div>'+
@@ -995,7 +977,7 @@ function renderPerVideo(){
     h+='<div class="vrow'+(sched?' scheduled':'')+(isOpen?' open':'')+'">';
     h+=thumb?'<img class="thumb" src="'+esc(thumb.url)+'" alt="" loading="lazy">':'<div class="thumb-ph">▶</div>';
     h+='<div style="min-width:0"><div class="vtitle" title="'+esc(title)+'">'+esc(title)+'</div>'+
-      '<div class="vmeta">'+(sched?'<span class="badge '+(isSoon(sched)?'b-soon':'b-sched')+'">'+(isSoon(sched)?'⏰ ':'')+esc(fmtDate(sched))+'</span>':'<span class="badge b-draft">Belum dijadwalkan</span>')+'</div></div>';
+      '<div class="vmeta">'+(sched?'<span class="badge '+(isSoon(sched)?'b-soon':'b-sched')+'">'+(isSoon(sched)?'⏰ ':'')+esc(fmtDate(sched))+'</span>':'<span class="badge b-draft">📝 Draft</span>')+'</div></div>';
     h+='<div class="vactions">';
     if(sched)h+='<button class="btn-unsched" onclick="doUnschedule(\''+v.id+'\')">✕ Hapus Jadwal</button>';
     h+='<button class="btn btn-xs'+(sched?'':' btn-red')+'" onclick="openPanel(\''+v.id+'\')">'+(isOpen?'✕ Tutup':(sched?'✏ Ubah':'📅 Jadwalkan'))+'</button>';
