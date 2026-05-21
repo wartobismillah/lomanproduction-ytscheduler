@@ -652,6 +652,17 @@ async function saveConfigToGitHub(){
   }
 }
 
+function addChConfigRow(){
+  var l=$('ch-cfg-list');if(!l)return;
+  var row=document.createElement('div');
+  row.className='ch-cfg-row';
+  row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px';
+  row.innerHTML='<input class="ch-cfg-name" type="text" placeholder="Nama channel baru" style="flex:1;padding:7px 9px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)">'+
+    '<input class="ch-cfg-color" type="color" value="#FF0000" style="width:36px;height:34px;border:1px solid var(--border2);border-radius:var(--r2);cursor:pointer;padding:2px">'+
+    '<button onclick="this.parentNode.remove()" style="width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--t3);font-size:16px">×</button>';
+  l.appendChild(row);
+}
+
 function renderCfgModal(){
   var token=ghGet('token'),repo=ghGet('repo');
   // Build channel rows from CONFIG + existing channels
@@ -688,7 +699,7 @@ function renderCfgModal(){
 
     '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Daftar Channel</div>'+
     '<div id="ch-cfg-list">'+chRows+'</div>'+
-    '<button onclick="var l=$(\'ch-cfg-list\');l.insertAdjacentHTML(\'beforeend\',\'<div class=\\"ch-cfg-row\\" style=\\"display:flex;gap:8px;align-items:center;margin-bottom:6px\\"><input class=\\"ch-cfg-name\\" type=\\"text\\" placeholder=\\"Nama channel baru\\" style=\\"flex:1;padding:7px 9px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)\\"><input class=\\"ch-cfg-color\\" type=\\"color\\" value=\\"#FF0000\\" style=\\"width:36px;height:34px;border:1px solid var(--border2);border-radius:var(--r2);cursor:pointer;padding:2px\\"><button onclick=\\"this.closest(\''+'.ch-cfg-row\'+')\'.remove()\\" style=\\"width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--t3);font-size:16px\\">×</button></div>\')" '+
+    '<div id="ch-cfg-list">'+chRows+'</div>'+
       'class="btn btn-sm btn-ghost" style="margin-bottom:10px">+ Tambah Channel</button>'+
 
     '<div class="modal-footer">'+
