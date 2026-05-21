@@ -243,36 +243,87 @@
 <div id="toasts"></div>
 
 <script>
+/* ═══════════════════════════════════════════════════════════
+   ✏️  KONFIGURASI — edit bagian ini, lalu push ke GitHub
+   ═══════════════════════════════════════════════════════════ */
+var CONFIG = {
+  // ── Client ID: bisa 1 atau lebih sebagai cadangan ──────────
+  clientIds: [
+    '854334250220-h1vepbnct1p9obq6d4pvq9f76rdfo8j0.apps.googleusercontent.com',   // ← Client ID #1 (utama)
+    '751998485199-s1ddtuuhuaa36368pn8v05lmk0j5qbnt.apps.googleusercontent.com',   // ← Client ID #2 (cadangan, boleh dikosongkan)
+    '',   // ← Client ID #3 (cadangan, boleh dikosongkan)
+  ],
+
+  // ── Daftar channel kamu ────────────────────────────────────
+  channels: [
+    // { name: 'Channel Utama',  color: '#FF0000' },
+    // { name: 'Channel Gaming', color: '#1A56DB' },
+    // { name: 'Channel Vlog',   color: '#1A7F3C' },
+  ]
+};
+/* ═══════════════════════════════════════════════════════════ */
+
+// Helper: ambil semua client ID yang valid
+function getClientIds(){
+  var ids=(CONFIG.clientIds||[]).filter(function(x){return x&&x.trim()});
+  if(!ids.length&&CONFIG.clientId)ids=[CONFIG.clientId];
+  return ids;
+}
+
 var A={
   step:'setup',channels:lsCh(),active:null,token:'',
+  cidIdx:0,          // index ke getClientIds() yang sedang dipakai
+  tokenExpiry:0,     // timestamp ms kapan token expired
   videos:[],scheduled:{},
   filter:'all',tab:'list',
   openPanel:null,
   modal:null,
   newCh:{name:'',cid:'',color:'#FF0000'},
   calM:new Date().getMonth(),calY:new Date().getFullYear(),
-  // bulk state
   bulk:{
-    mode:'interval',   // 'interval' | 'custom'
-    interval:1,        // days
-    customN:3,         // for custom interval input
+    mode:'interval',
+    interval:1,
+    customN:3,
     startDate:'',
-    time:'10:00',
-    selected:[],       // ordered array of videoIds
-    customDates:{}     // videoId -> date string (for custom mode)
+    time:'00:00',
+    selected:[],
+    customDates:{}
   }
 };
 var COLORS=['#FF0000','#1A7F3C','#1A56DB','#9333EA','#EA580C','#0891B2','#BE185D','#CA8A04'];
 
-function lsCh(){try{return JSON.parse(localStorage.getItem('yt_ch')||'[]')}catch(e){return[]}}
-function saveCh(){localStorage.setItem('yt_ch',JSON.stringify(A.channels))}
+function lsCh(){
+  var stored=[];try{stored=JSON.parse(localStorage.getItem('yt_ch')||'[]')}catch(e){}
+  var ids=getClientIds();
+  var cid0=ids[0]||'';
+  if(cid0 && CONFIG.channels && CONFIG.channels.length){
+    CONFIG.channels.forEach(function(c){
+      var exists=stored.find(function(s){return s.name===c.name});
+      if(!exists)stored.unshift({id:'cfg_'+c.name.replace(/\s/g,'_'),name:c.name,cid:cid0,color:c.color||'#FF0000',fromConfig:true});
+      else if(!exists.cid)exists.cid=cid0;
+    });
+  }
+  if(cid0)stored.forEach(function(c){if(!c.cid)c.cid=cid0;});
+  return stored;
+}
+function saveCh(){
+  var toSave=A.channels.filter(function(c){return!c.fromConfig});
+  localStorage.setItem('yt_ch',JSON.stringify(toSave));
+}
 function saveSched(){if(!A.active)return;localStorage.setItem('yt_sc_'+A.active.id,JSON.stringify(A.scheduled))}
 function loadSched(ch){try{return JSON.parse(localStorage.getItem('yt_sc_'+ch.id)||'{}')}catch(e){return{}}}
 function tzOffset(){return-new Date().getTimezoneOffset()/60}
-function tzLabel(){var o=tzOffset();return'UTC'+(o>=0?'+':'')+o}
+function tzLabel(){
+  var o=tzOffset();
+  // Named timezone labels
+  var names={7:'WIB',8:'WITA',9:'WIT'};
+  return names[o]||(o>=0?'UTC+'+o:'UTC'+o);
+}
+// FIXED: new Date('YYYY-MM-DDTHH:MM:SS') tanpa timezone suffix
+// sudah diinterpretasi browser sebagai LOCAL time,
+// jadi .toISOString() langsung menghasilkan UTC yang benar.
 function localToUTC(date,time){
-  var o=tzOffset(),d=new Date(date+'T'+time+':00');
-  d.setHours(d.getHours()-o);return d.toISOString();
+  return new Date(date+'T'+(time||'00:00')+':00').toISOString();
 }
 function utcToLocal(iso){
   if(!iso)return{date:'',time:''};
@@ -288,6 +339,7 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 function $(id){return document.getElementById(id)}
 function val(id){return($( id)||{}).value||''}
 function today(){return new Date().toISOString().split('T')[0]}
+function tomorrow(){var d=new Date();d.setDate(d.getDate()+1);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 
 function toast(msg,type){
   var el=document.createElement('div');el.className='toast '+(type||'inf');el.textContent=msg;
@@ -304,19 +356,48 @@ function loadGIS(){
     document.head.appendChild(s);
   });
 }
-async function signIn(ch){
+async function signIn(ch, cidIdxOverride){
   try{
     await loadGIS();
+    var ids=getClientIds();
+    // Ch may have own cid (from config), otherwise use rotating cidIdx
+    var cid=ch.cid;
+    if(!cid){
+      if(cidIdxOverride!==undefined)A.cidIdx=cidIdxOverride;
+      cid=ids[A.cidIdx%Math.max(ids.length,1)]||'';
+    }
+    if(!cid){toast('Client ID belum diisi di CONFIG','err');return;}
     google.accounts.oauth2.initTokenClient({
-      client_id:ch.cid||ch.clientId,
+      client_id:cid,
       scope:'https://www.googleapis.com/auth/youtube',
       callback:async function(r){
-        if(r.error){toast('Login gagal: '+r.error,'err');return;}
-        A.token=r.access_token;A.active=ch;A.scheduled=loadSched(ch);
+        if(r.error){
+          // Try next clientId if available
+          var nextIdx=(A.cidIdx+1);
+          if(ids.length>1 && nextIdx<ids.length){
+            toast('Client ID #'+(A.cidIdx+1)+' gagal, coba #'+(nextIdx+1)+'...','inf');
+            A.cidIdx=nextIdx;
+            setTimeout(function(){signIn(ch,nextIdx)},500);
+          }else{
+            toast('Login gagal: '+r.error,'err');
+          }
+          return;
+        }
+        A.token=r.access_token;
+        A.tokenExpiry=Date.now()+(r.expires_in||3600)*1000;
+        A.active=ch;A.scheduled=loadSched(ch);
         A.step='loading';render();await fetchVideos();
       }
     }).requestAccessToken({prompt:''});
   }catch(e){toast('Error: '+e.message,'err');}
+}
+// Try next client ID manually
+function rotateClientId(){
+  var ids=getClientIds();
+  if(ids.length<=1){toast('Hanya ada 1 Client ID di config','inf');return;}
+  A.cidIdx=(A.cidIdx+1)%ids.length;
+  toast('Beralih ke Client ID #'+(A.cidIdx+1),'inf');
+  if(A.active)signIn(A.active,A.cidIdx);
 }
 async function fetchVideos(){
   try{
@@ -451,7 +532,8 @@ function signOut(){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active
 async function refresh(){A.step='loading';render();await fetchVideos();}
 function switchCh(ch){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;render();setTimeout(function(){signIn(ch)},100);}
 function addChannel(){
-  var name=val('nc-name').trim()||'Channel Baru',cid=val('nc-cid').trim();
+  var name=val('nc-name').trim()||'Channel Baru';
+  var cid=val('nc-cid').trim()||getClientIds()[0]||'';
   if(!cid){toast('Masukkan Client ID','err');return;}
   var ch={id:Date.now().toString(),name:name,cid:cid,color:A.newCh.color};
   A.channels.push(ch);saveCh();A.modal=null;A.newCh={name:'',cid:'',color:'#FF0000'};
@@ -475,14 +557,181 @@ function getThumb(v){var t=v.snippet&&v.snippet.thumbnails;return t&&(t.medium||
 function getTitle(v){return(v.snippet&&v.snippet.title)||'Untitled'}
 
 /* ─ RENDER ─ */
+/* ── GitHub self-update ── */
+function ghGet(key){return localStorage.getItem('gh_'+key)||''}
+function ghSet(key,val){localStorage.setItem('gh_'+key,val)}
+
+function toB64(str){
+  // UTF-8 safe base64
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function ghFetchFile(){
+  var token=ghGet('token'),repo=ghGet('repo');
+  if(!token||!repo)throw new Error('GitHub token / repo belum diset');
+  var r=await fetch('https://api.github.com/repos/'+repo+'/contents/index.html',{
+    headers:{Authorization:'token '+token,'Accept':'application/vnd.github.v3+json'}
+  });
+  if(!r.ok)throw new Error('GitHub API error '+r.status+': pastikan token & repo benar');
+  return r.json();
+}
+
+async function saveConfigToGitHub(){
+  var clientId=val('cfg-cid').trim();
+  if(!clientId){toast('Masukkan Client ID','err');return;}
+
+  // Collect channels from dynamic inputs
+  var chInputs=document.querySelectorAll('.ch-cfg-row');
+  var channels=[];
+  chInputs.forEach(function(row){
+    var n=row.querySelector('.ch-cfg-name'),c=row.querySelector('.ch-cfg-color');
+    if(n&&n.value.trim())channels.push({name:n.value.trim(),color:c?c.value:'#FF0000'});
+  });
+  if(!channels.length){toast('Tambahkan minimal 1 channel','err');return;}
+
+  var token=val('cfg-token').trim(),repo=val('cfg-repo').trim();
+  if(!token||!repo){toast('Isi GitHub Token dan Repo','err');return;}
+  ghSet('token',token);ghSet('repo',repo);
+
+  var btn=$('btn-save-cfg');
+  btn.disabled=true;btn.textContent='Menyimpan ke GitHub...';
+
+  try{
+    var fileData=await ghFetchFile();
+    var current=decodeURIComponent(escape(atob(fileData.content.replace(/\n/g,''))));
+    var sha=fileData.sha;
+
+    // Build new CONFIG block
+    var chLines=channels.map(function(c){
+      return "    { name: '"+c.name.replace(/'/g,"\\'")+"', color: '"+c.color+"' }";
+    }).join(',\n');
+    var newConfig="var CONFIG = {\n  clientId: '"+clientId+"',\n\n  channels: [\n"+chLines+"\n  ]\n};";
+
+    var newContent=current.replace(/var CONFIG = \{[\s\S]*?\};/,newConfig);
+    if(newContent===current)throw new Error('Tidak bisa menemukan blok CONFIG di file. Pastikan filenya tidak diubah manual.');
+
+    var r=await fetch('https://api.github.com/repos/'+repo+'/contents/index.html',{
+      method:'PUT',
+      headers:{Authorization:'token '+token,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'},
+      body:JSON.stringify({message:'Update YT Scheduler config via app',content:toB64(newContent),sha:sha})
+    });
+    var rd=await r.json();
+    if(!r.ok)throw new Error(rd.message||'GitHub error '+r.status);
+
+    toast('✓ Berhasil disimpan ke GitHub!','ok');
+    A.modal=null;
+    // Reload after short delay so GitHub Pages can deploy
+    setTimeout(function(){
+      if(confirm('Config tersimpan! Muat ulang halaman sekarang?'))location.reload();
+    },1500);
+  }catch(e){
+    toast('Gagal: '+e.message,'err');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Simpan ke GitHub';}
+  }
+}
+
+function renderCfgModal(){
+  var token=ghGet('token'),repo=ghGet('repo');
+  // Build channel rows from CONFIG + existing channels
+  var existingCh=CONFIG.channels&&CONFIG.channels.length?CONFIG.channels:
+    A.channels.filter(function(c){return!c.fromConfig}).slice(0,8);
+  if(!existingCh.length)existingCh=[{name:'',color:'#FF0000'}];
+
+  var chRows=existingCh.map(function(c,i){
+    return'<div class="ch-cfg-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+
+      '<input class="ch-cfg-name" type="text" placeholder="Nama channel '+(i+1)+'" value="'+esc(c.name)+'" style="flex:1;padding:7px 9px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)">'+
+      '<input class="ch-cfg-color" type="color" value="'+esc(c.color||'#FF0000')+'" style="width:36px;height:34px;border:1px solid var(--border2);border-radius:var(--r2);cursor:pointer;padding:2px">'+
+      '<button onclick="this.closest(\'.ch-cfg-row\').remove()" style="width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--t3);font-size:16px;display:flex;align-items:center;justify-content:center">×</button>'+
+    '</div>';
+  }).join('');
+
+  return'<div class="overlay" onclick="if(event.target===this){A.modal=null;render()}">'+
+  '<div class="modal" style="width:480px">'+
+    '<h3>⚙️ Simpan Config ke GitHub</h3>'+
+    '<div class="info-blue" style="margin-bottom:14px;font-size:12px">'+
+      'Config (Client ID + channel) akan disimpan langsung ke file <code>index.html</code> di repo GitHub-mu. '+
+      'GitHub Token hanya disimpan di browser ini, <b>tidak</b> masuk ke file GitHub.'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
+      '<div class="fg" style="margin:0"><label>GitHub Repo</label>'+
+        '<input id="cfg-repo" type="text" placeholder="username/repo-name" value="'+esc(repo)+'"></div>'+
+      '<div class="fg" style="margin:0"><label>Personal Access Token '+
+        '<a href="https://github.com/settings/tokens/new?scopes=contents&description=YT+Scheduler" target="_blank" style="color:var(--blue);font-size:10px;font-weight:400">Buat token →</a></label>'+
+        '<input id="cfg-token" type="password" placeholder="ghp_xxxxxxxxxxxx" value="'+esc(token)+'"></div>'+
+    '</div>'+
+
+    '<div class="fg"><label>Google OAuth Client ID</label>'+
+      '<input id="cfg-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(CONFIG.clientId)+'"></div>'+
+
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Daftar Channel</div>'+
+    '<div id="ch-cfg-list">'+chRows+'</div>'+
+    '<button onclick="var l=$(\'ch-cfg-list\');l.insertAdjacentHTML(\'beforeend\',\'<div class=\\"ch-cfg-row\\" style=\\"display:flex;gap:8px;align-items:center;margin-bottom:6px\\"><input class=\\"ch-cfg-name\\" type=\\"text\\" placeholder=\\"Nama channel baru\\" style=\\"flex:1;padding:7px 9px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)\\"><input class=\\"ch-cfg-color\\" type=\\"color\\" value=\\"#FF0000\\" style=\\"width:36px;height:34px;border:1px solid var(--border2);border-radius:var(--r2);cursor:pointer;padding:2px\\"><button onclick=\\"this.closest(\''+'.ch-cfg-row\'+')\'.remove()\\" style=\\"width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--t3);font-size:16px\\">×</button></div>\')" '+
+      'class="btn btn-sm btn-ghost" style="margin-bottom:10px">+ Tambah Channel</button>'+
+
+    '<div class="modal-footer">'+
+      '<button class="btn btn-sm" onclick="A.modal=null;render()">Batal</button>'+
+      '<button class="btn btn-red btn-sm" id="btn-save-cfg" onclick="saveConfigToGitHub()">💾 Simpan ke GitHub</button>'+
+    '</div>'+
+  '</div></div>';
+}
+
+function tokenRemainingLabel(){
+  if(!A.tokenExpiry)return'';
+  var ms=A.tokenExpiry-Date.now();
+  if(ms<=0)return'<span style="color:var(--red);font-size:11px;font-weight:700;padding:2px 7px;background:var(--red-bg);border-radius:4px">⚠ Expired</span>';
+  var m=Math.floor(ms/60000);
+  var color=m<10?'var(--red)':(m<30?'var(--orange)':'var(--green)');
+  var bg=m<10?'var(--red-bg)':(m<30?'var(--orange-bg)':'var(--green-bg)');
+  return'<span style="font-size:11px;font-weight:700;color:'+color+';padding:2px 7px;background:'+bg+';border-radius:4px">⏱ '+m+' mnt</span>';
+}
+
 function renderHeader(){
   var r=$('hdr-r');if(!r)return;
+  var cfgBtn='<button class="btn btn-sm btn-ghost" onclick="A.modal=\'cfg\';render()" title="Simpan config ke GitHub">⚙️ Config</button>';
   if(A.step==='dashboard'){
-    r.innerHTML='<span style="font-size:12px;color:var(--t3)"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(A.active?A.active.name:'')+'</span>'+
-    '<button class="btn btn-sm btn-ghost" onclick="refresh()">↻</button>'+
-    '<button class="btn btn-sm btn-ghost" onclick="signOut()">Sign Out</button>';
-  }else r.innerHTML='';
+    var ids=getClientIds();
+    var cidInfo=ids.length>1?'<span style="font-size:10px;color:var(--t3);padding:2px 6px;border:1px solid var(--border);border-radius:4px">CID #'+(A.cidIdx+1)+'/'+ids.length+'</span>':'';
+    var rotBtn=ids.length>1?'<button class="btn btn-xs btn-ghost" onclick="rotateClientId()" title="Ganti ke Client ID berikutnya">⇄ Ganti CID</button>':'';
+    r.innerHTML=
+      '<span style="font-size:12px;color:var(--t3)"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(A.active?A.active.name:'')+'</span>'+
+      tokenRemainingLabel()+' '+cidInfo+rotBtn+
+      '<button class="btn btn-sm btn-ghost" onclick="refresh()">↻</button>'+
+      cfgBtn+
+      '<button class="btn btn-sm btn-ghost" onclick="signOut()">Sign Out</button>';
+  }else{
+    r.innerHTML=cfgBtn;
+  }
 }
+
+// Ticker: update token label setiap 30 detik
+setInterval(function(){
+  if(A.step==='dashboard'){
+    renderHeader();
+    var ms=A.tokenExpiry?A.tokenExpiry-Date.now():999999;
+    // Warn at < 5 menit
+    if(ms>0&&ms<5*60000&&!A._warned){
+      A._warned=true;
+      var ids=getClientIds();
+      if(ids.length>1)toast('Token hampir habis — siap otomatis ganti Client ID','inf');
+      else toast('Token habis dalam <5 menit, siap-siap Sign In ulang','inf');
+    }
+    // Auto-rotate & re-sign when expired
+    if(A.tokenExpiry&&Date.now()>A.tokenExpiry&&A.active){
+      A.tokenExpiry=0;A._warned=false;
+      var ids=getClientIds();
+      if(ids.length>1){
+        A.cidIdx=(A.cidIdx+1)%ids.length;
+        toast('Token expired → otomatis ganti ke Client ID #'+(A.cidIdx+1),'inf');
+        signIn(A.active,A.cidIdx);
+      }else{
+        toast('Token expired — silakan Sign In ulang','inf');
+        renderHeader();
+      }
+    }
+  }
+},30000);
 
 function renderChBar(){
   if(!A.channels.length)return'';
@@ -498,19 +747,32 @@ function renderChBar(){
 function renderSetup(){
   var h=renderChBar();
   if(A.channels.length){h+='<div class="empty"><p style="font-size:13px">Pilih channel di atas atau tambah channel baru.</p></div>';return h;}
+  // No config yet — show two paths
   h+='<div class="setup-wrap"><div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">'+
   '<h2>🎬 Setup YouTube Scheduler</h2>'+
-  '<p class="setup-intro">Hubungkan channel YouTube-mu. Gratis, semua berjalan di browser — tidak ada server.</p>'+
-  '<ul class="steps">'+
-  '<li><div class="sn">1</div><div>Buka <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → Buat project baru</div></li>'+
-  '<li><div class="sn">2</div><div><b>APIs & Services</b> → Enable <b>YouTube Data API v3</b></div></li>'+
-  '<li><div class="sn">3</div><div><b>Credentials</b> → <b>OAuth 2.0 Client ID</b> → Web Application → tambahkan URL hosting di Authorized Origins</div></li>'+
-  '<li><div class="sn">4</div><div><b>OAuth consent screen</b> → Test users → tambahkan Gmail-mu</div></li>'+
+  '<p class="setup-intro">Hubungkan channel YouTube-mu. Gratis, semua berjalan di browser.</p>'+
+
+  // PATH A — recommended: save to GitHub
+  '<div style="border:2px solid var(--red);border-radius:var(--r2);padding:14px;margin-bottom:12px">'+
+  '<div style="font-size:13px;font-weight:700;margin-bottom:4px">🚀 Cara Disarankan — Simpan ke GitHub</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config tersimpan di file GitHub-mu. Buka dari browser/device apapun langsung jalan tanpa setup ulang.</div>'+
+  '<button class="btn btn-red btn-sm" onclick="A.modal=\'cfg\';render()">⚙️ Setup & Simpan ke GitHub</button>'+
+  '</div>'+
+
+  // PATH B — manual
+  '<div style="border:1px solid var(--border);border-radius:var(--r2);padding:14px">'+
+  '<div style="font-size:13px;font-weight:700;margin-bottom:4px">📱 Setup Manual — Hanya Browser Ini</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config disimpan di browser ini saja. Ganti browser atau device perlu setup ulang.</div>'+
+  '<ul class="steps" style="margin-bottom:12px">'+
+  '<li><div class="sn">1</div><div>Buka <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → buat project → enable <b>YouTube Data API v3</b></div></li>'+
+  '<li><div class="sn">2</div><div><b>Credentials</b> → OAuth 2.0 Client ID → Web Application → tambahkan URL hosting di Authorized Origins</div></li>'+
+  '<li><div class="sn">3</div><div><b>OAuth consent screen</b> → Test users → tambahkan Gmail-mu</div></li>'+
   '</ul>'+
-  '<div class="divider"></div>'+
   '<div class="fg"><label>Nama Channel</label><input id="s-name" type="text" placeholder="Channel Utama"></div>'+
   '<div class="fg"><label>OAuth Client ID</label><input id="s-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>'+
-  '<div style="margin-top:1rem"><button class="btn btn-red" onclick="setupFirst()">Hubungkan →</button></div>'+
+  '<button class="btn btn-sm" onclick="setupFirst()">Hubungkan →</button>'+
+  '</div>'+
+
   '</div></div>';
   return h;
 }
@@ -544,7 +806,7 @@ function renderPerVideo(){
   h+='<div class="vlist vscroll">';
   filtered.forEach(function(v){
     var sched=A.scheduled[v.id],isOpen=A.openPanel===v.id;
-    var thumb=getThumb(v),title=getTitle(v),existing=sched?utcToLocal(sched):{date:'',time:'10:00'};
+    var thumb=getThumb(v),title=getTitle(v),existing=sched?utcToLocal(sched):{date:tomorrow(),time:'00:00'};
     h+='<div class="vrow'+(sched?' scheduled':'')+(isOpen?' open':'')+'">';
     h+=thumb?'<img class="thumb" src="'+esc(thumb.url)+'" alt="" loading="lazy">':'<div class="thumb-ph">▶</div>';
     h+='<div style="min-width:0"><div class="vtitle" title="'+esc(title)+'">'+esc(title)+'</div>'+
@@ -588,7 +850,7 @@ function renderBulk(){
   left+='</div>';
 
   if(b.mode==='interval'){
-    left+='<div class="fg"><label>Tanggal Mulai</label><input type="date" id="b-start" min="'+today()+'" value="'+esc(b.startDate||today())+'" oninput="A.bulk.startDate=this.value;render()"></div>';
+    left+='<div class="fg"><label>Tanggal Mulai</label><input type="date" id="b-start" min="'+today()+'" value="'+esc(b.startDate||tomorrow())+'" oninput="A.bulk.startDate=this.value;render()"></div>';
     left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Interval</div>';
     left+='<div class="interval-row">';
     [1,2,3,7].forEach(function(n){
@@ -599,7 +861,7 @@ function renderBulk(){
     left+='</div>';
   }
 
-  left+='<div class="fg" style="margin-top:12px"><label>Jam Publish (semua video sama) — '+tzLabel()+'</label><input type="time" id="b-time" value="'+esc(b.time)+'" oninput="A.bulk.time=this.value"></div>';
+  left+='<div class="fg" style="margin-top:12px"><label>Jam Publish — '+tzLabel()+' (waktu lokal)</label><input type="time" id="b-time" value="'+esc(b.time)+'" oninput="A.bulk.time=this.value"></div>';
   left+='</div></div>';
 
   // RIGHT: video selection + preview
@@ -653,7 +915,7 @@ function renderBulk(){
   if(!selCount){
     right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Pilih video di atas untuk melihat preview jadwal.</p></div>';
   }else if(b.mode==='interval'){
-    var startVal=b.startDate||today();
+    var startVal=b.startDate||tomorrow();
     right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal Publish</th></tr></thead><tbody>';
     b.selected.forEach(function(id,i){
       var v=A.videos.find(function(x){return x.id===id});if(!v)return;
@@ -663,7 +925,7 @@ function renderBulk(){
     right+='</tbody></table></div>';
     right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video akan dijadwalkan mulai '+esc(fmtShort(startVal))+', setiap '+b.interval+' hari, jam '+(b.time||'10:00')+' '+tzLabel()+'</div>';
   }else{
-    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal untuk masing-masing video. Jam: <b id="b-time-label">'+(b.time||'10:00')+'</b> '+tzLabel()+'</div>';
+    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal untuk masing-masing video. Jam: <b id="b-time-label">'+(b.time||'00:00')+'</b> '+tzLabel()+'</div>';
     right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal</th></tr></thead><tbody>';
     b.selected.forEach(function(id,i){
       var v=A.videos.find(function(x){return x.id===id});if(!v)return;
@@ -691,7 +953,7 @@ function buildCustomPreviewRows(){return[]}
 
 function saveBulkValues(){
   // Sync all form values before applying
-  A.bulk.startDate=val('b-start')||A.bulk.startDate||today();
+  A.bulk.startDate=val('b-start')||A.bulk.startDate||tomorrow();
   A.bulk.time=val('b-time')||A.bulk.time;
   if(A.bulk.mode==='custom'){
     A.bulk.selected.forEach(function(id){var v=val('bc-'+id);if(v)A.bulk.customDates[id]=v;});
@@ -748,13 +1010,16 @@ function renderDashboard(){
 
 function renderAddChModal(){
   var sw=COLORS.map(function(c){return'<div class="cswatch'+(A.newCh.color===c?' sel':'')+'" style="background:'+c+'" onclick="A.newCh.color=\''+c+'\';render()"></div>';}).join('');
+  var cidField=getClientIds().length>0
+    ? '<div class="info-blue" style="font-size:12px;margin-bottom:10px">✓ Menggunakan Client ID dari config file.</div>'
+    : '<div class="fg"><label>OAuth Client ID</label><input id="nc-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(A.newCh.cid)+'"></div>';
   return'<div class="overlay" onclick="if(event.target===this){A.modal=null;render()}">'+
     '<div class="modal"><h3>➕ Tambah Channel Baru</h3>'+
     '<div class="fg"><label>Nama Channel</label><input id="nc-name" type="text" placeholder="Channel Gaming" value="'+esc(A.newCh.name)+'"></div>'+
-    '<div class="fg"><label>OAuth Client ID</label><input id="nc-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(A.newCh.cid)+'"></div>'+
+    cidField+
     '<div class="fg"><label>Warna Label</label><div class="color-row">'+sw+'</div></div>'+
     '<div class="modal-footer"><button class="btn btn-sm" onclick="A.modal=null;render()">Batal</button>'+
-    '<button class="btn btn-red btn-sm" onclick="A.newCh.name=val(\'nc-name\');A.newCh.cid=val(\'nc-cid\');addChannel()">Hubungkan →</button></div>'+
+    '<button class="btn btn-red btn-sm" onclick="A.newCh.name=val(\'nc-name\');A.newCh.cid=val(\'nc-cid\')||getClientIds()[0]||\'\';addChannel()">Hubungkan →</button></div>'+
     '</div></div>';
 }
 
@@ -765,10 +1030,15 @@ function render(){
   else if(A.step==='loading')h='<div class="loader"><div class="spinner"></div> Memuat video dari YouTube...</div>';
   else if(A.step==='dashboard')h=renderDashboard();
   if(A.modal==='addch')h+=renderAddChModal();
+  if(A.modal==='cfg')h+=renderCfgModal();
   root.innerHTML=h;renderHeader();
 }
 
-if(!A.channels.length)A.step='setup';
+// Boot — if CONFIG has clientId and channels, skip setup screen
+A.channels = lsCh();
+if(A.channels.length && getClientIds().length){
+  A.step = 'setup'; // show channel selector, not blank setup
+}
 render();
 </script>
 </body>
