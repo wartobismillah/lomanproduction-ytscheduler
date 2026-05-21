@@ -390,7 +390,7 @@ async function signIn(ch, cidIdxOverride){
         A.active=ch;A.scheduled=loadSched(ch);
         A.step='loading';render();await pickChannel();
       }
-    }).requestAccessToken({prompt:''});
+    }).requestAccessToken({prompt:'select_account'});
   }catch(e){toast('Error: '+e.message,'err');}
 }
 // Try next client ID manually
@@ -404,76 +404,93 @@ function rotateClientId(){
 // After login: fetch all YT channels for this account, let user pick
 async function pickChannel(){
   try{
-    // Coba ambil semua channel yang dikelola akun ini
-    var r=await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true&maxResults=50',
+    // Ambil info channel yang sedang aktif (sesuai akun yg dipilih saat OAuth)
+    var r=await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&mine=true',
       {headers:{Authorization:'Bearer '+A.token}});
     var d=await r.json();
     if(d.error)throw new Error(d.error.message);
     var channels=d.items||[];
-    if(channels.length<=1){
-      // Hanya 1 channel, langsung lanjut
-      A.ytChannels=channels;
-      A.ytSelectedChannel=channels[0]||null;
-      await fetchVideos();
-    } else {
-      // Lebih dari 1 channel — tampilkan picker
-      A.ytChannels=channels;
-      A.ytSelectedChannel=null;
-      A.step='pick_channel';
-      render();
-    }
+    A.ytChannels=channels;
+    A.ytSelectedChannel=channels[0]||null;
+    // Selalu tampilkan konfirmasi channel dulu
+    A.step='pick_channel';
+    render();
   }catch(e){
-    // Kalau gagal fetch channels, lanjut saja ke fetchVideos
     A.ytChannels=[];A.ytSelectedChannel=null;
     await fetchVideos();
   }
 }
 
 async function confirmYtChannel(idx){
-  var ch=A.ytChannels[idx];
-  if(!ch)return;
-  A.ytSelectedChannel=ch;
   A.step='loading';render();
   await fetchVideos();
 }
 
+function reloginDifferentChannel(){
+  // Force Google to show account/channel picker again
+  var activeCh=A.active;
+  A.token='';A.tokenExpiry=0;A.ytChannels=[];A.ytSelectedChannel=null;
+  if(activeCh){
+    // Re-trigger OAuth with prompt=select_account (already set globally)
+    signIn(activeCh);
+  }else{
+    A.step='setup';render();
+  }
+}
+
 function renderPickChannel(){
-  var channels=A.ytChannels||[];
-  var h='<div style="max-width:480px;margin:2rem auto">';
+  var ch=A.ytSelectedChannel;
+  var snap=ch?ch.snippet||{}:{};
+  var stats=ch?ch.statistics||{}:{};
+  var thumb=snap.thumbnails&&(snap.thumbnails.medium||snap.thumbnails.default);
+  var name=snap.title||'Channel tidak diketahui';
+  var handle=snap.customUrl?snap.customUrl:'';
+  if(handle&&handle[0]!=='@')handle='@'+handle;
+  var subs=stats.subscriberCount?parseInt(stats.subscriberCount).toLocaleString('id-ID')+' subscriber':'';
+
+  var h='<div style="max-width:460px;margin:2rem auto">';
   h+='<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">';
-  h+='<h2 style="font-size:17px;font-weight:700;margin-bottom:4px">Pilih Channel YouTube</h2>';
+  h+='<h2 style="font-size:17px;font-weight:700;margin-bottom:4px">Konfirmasi Channel</h2>';
   h+='<p style="font-size:13px;color:var(--t2);margin-bottom:1.25rem;line-height:1.55">'+
-    'Akun ini punya <b>'+channels.length+' channel YouTube</b>. Pilih channel yang ingin dijadwalkan videonya:</p>';
-  channels.forEach(function(ch,i){
-    var snap=ch.snippet||{};
-    var thumb=snap.thumbnails&&(snap.thumbnails.default||snap.thumbnails.medium);
-    var name=snap.title||'Channel '+(i+1);
-    var handle=snap.customUrl?('@'+snap.customUrl.replace(/^@/,'')):'';
-    h+='<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r2);margin-bottom:8px;cursor:pointer;transition:all .15s" '+
-      'onmouseover="this.style.outline=\'2px solid var(--red)\'" onmouseout="this.style.outline=\'none\'" '+
-      'onclick="confirmYtChannel('+i+')">';
-    h+=(thumb?'<img src="'+esc(thumb.url)+'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0">':
-      '<div style="width:48px;height:48px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0">'+esc(name[0])+'</div>');
-    h+='<div style="flex:1;min-width:0">';
-    h+='<div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(name)+'</div>';
-    if(handle)h+='<div style="font-size:12px;color:var(--t3)">'+esc(handle)+'</div>';
+    'Apakah ini channel yang ingin kamu jadwalkan?</p>';
+
+  // Channel card
+  h+='<div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--hover);border-radius:var(--r2);margin-bottom:1.25rem">';
+  if(ch){
+    h+=(thumb?'<img src="'+esc(thumb.url)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0">':
+      '<div style="width:56px;height:56px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700;flex-shrink:0">'+esc(name[0])+'</div>');
+    h+='<div>';
+    h+='<div style="font-size:15px;font-weight:700">'+esc(name)+'</div>';
+    if(handle)h+='<div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(handle)+'</div>';
+    if(subs)h+='<div style="font-size:12px;color:var(--t3);margin-top:1px">'+esc(subs)+'</div>';
     h+='</div>';
-    h+='<div style="color:var(--red);font-size:18px">→</div>';
-    h+='</div>';
-  });
-  h+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">';
-  h+='<p style="font-size:11px;color:var(--t3);margin-bottom:8px">Tidak menemukan channel yang tepat?</p>';
-  h+='<button class="btn btn-sm btn-ghost" onclick="signOut()">← Ganti Akun Google</button>';
+  }else{
+    h+='<div style="font-size:13px;color:var(--t3)">Tidak ada channel ditemukan.</div>';
+  }
   h+='</div>';
+
+  // Action buttons
+  h+='<div style="display:flex;gap:8px">';
+  h+='<button class="btn btn-red" style="flex:1" onclick="confirmYtChannel(0)">✓ Ya, Lanjutkan</button>';
+  h+='</div>';
+
+  // Help: wrong channel
+  h+='<div style="margin-top:14px;padding:12px;background:var(--orange-bg);border:1px solid var(--orange-b);border-radius:var(--r2)">';
+  h+='<div style="font-size:12px;font-weight:700;color:var(--orange);margin-bottom:6px">⚠ Channel salah?</div>';
+  h+='<div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:8px">'+
+    'Jika channel di atas bukan yang kamu mau, klik tombol di bawah dan <b>pilih identitas YouTube yang berbeda</b> di popup Google.'+
+    '<br><br>Contoh: jika muncul opsi "<b>NamaChannel (YouTube)</b>", pilih itu — bukan akun Gmail.'+
+  '</div>';
+  h+='<button class="btn btn-sm" onclick="reloginDifferentChannel()">🔄 Ganti Channel / Akun</button>';
+  h+='</div>';
+
   h+='</div></div>';
   return h;
 }
 
 async function fetchVideos(){
   try{
-    // Gunakan channelId spesifik jika user sudah memilih channel
-    var chParam=A.ytSelectedChannel?'&channelId='+A.ytSelectedChannel.id:'';
-    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date'+chParam,{headers:{Authorization:'Bearer '+A.token}});
+    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',{headers:{Authorization:'Bearer '+A.token}});
     var d1=await r1.json();
     if(d1.error)throw new Error(d1.error.message);
     if(!d1.items||!d1.items.length){A.videos=[];A.step='dashboard';render();return;}
