@@ -4,6 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTube Multi-Channel Scheduler</title>
+
+<!-- ═══════════════════════════════════════════════════════════
+     ✏️  KONFIGURASI — edit bagian ini, lalu push ke GitHub
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+var CONFIG = {
+  // ── Client ID: bisa 1 atau lebih sebagai cadangan ──────────
+  clientIds: [
+    '854334250220-h1vepbnct1p9obq6d4pvq9f76rdfo8j0.apps.googleusercontent.com',   // ← Client ID #1 (utama)
+    '751998485199-s1ddtuuhuaa36368pn8v05lmk0j5qbnt.apps.googleusercontent.com',   // ← Client ID #2 (cadangan, boleh dikosongkan)
+    '',   // ← Client ID #3 (cadangan, boleh dikosongkan)
+  ],
+
+  // ── Daftar channel kamu ────────────────────────────────────
+  channels: [
+    { name: 'Channel Utama',  color: '#FF0000' },
+    // { name: 'Channel Gaming', color: '#1A56DB' },
+    // { name: 'Channel Vlog',   color: '#1A7F3C' },
+  ]
+};
+</script>
+<!-- ═══════════════════════════════════════════════════════════ -->
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -243,26 +266,6 @@
 <div id="toasts"></div>
 
 <script>
-/* ═══════════════════════════════════════════════════════════
-   ✏️  KONFIGURASI — edit bagian ini, lalu push ke GitHub
-   ═══════════════════════════════════════════════════════════ */
-var CONFIG = {
-  // ── Client ID: bisa 1 atau lebih sebagai cadangan ──────────
-  clientIds: [
-    '854334250220-h1vepbnct1p9obq6d4pvq9f76rdfo8j0.apps.googleusercontent.com',   // ← Client ID #1 (utama)
-    '751998485199-s1ddtuuhuaa36368pn8v05lmk0j5qbnt.apps.googleusercontent.com',   // ← Client ID #2 (cadangan, boleh dikosongkan)
-    '',   // ← Client ID #3 (cadangan, boleh dikosongkan)
-  ],
-
-  // ── Daftar channel kamu ────────────────────────────────────
-  channels: [
-    { name: 'Channel Utama',  color: '#FF0000' },
-    // { name: 'Channel Gaming', color: '#1A56DB' },
-    // { name: 'Channel Vlog',   color: '#1A7F3C' },
-  ]
-};
-/* ═══════════════════════════════════════════════════════════ */
-
 // Helper: ambil semua client ID yang valid
 function getClientIds(){
   var ids=(CONFIG.clientIds||[]).filter(function(x){return x&&x.trim()});
@@ -494,17 +497,36 @@ function renderPickChannel(){
 
 async function fetchVideos(){
   try{
-    var r1=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date',
-      {headers:{Authorization:'Bearer '+A.token}});
-    var d1=await r1.json();
-    if(d1.error)throw new Error(d1.error.message);
-    if(!d1.items||!d1.items.length){A.videos=[];A.step='dashboard';render();return;}
-    var ids=d1.items.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
-    var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
-      {headers:{Authorization:'Bearer '+A.token}});
-    var d2=await r2.json();
-    if(d2.error)throw new Error(d2.error.message);
-    A.videos=d2.items||[];
+    // ── Langkah 1: Ambil SEMUA video pakai pagination ──────────
+    var allSearchItems=[];
+    var pageToken='';
+    do{
+      var url='https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50&order=date';
+      if(pageToken)url+='&pageToken='+encodeURIComponent(pageToken);
+      var r1=await fetch(url,{headers:{Authorization:'Bearer '+A.token}});
+      var d1=await r1.json();
+      if(d1.error)throw new Error(d1.error.message);
+      if(d1.items&&d1.items.length)allSearchItems=allSearchItems.concat(d1.items);
+      pageToken=d1.nextPageToken||'';
+    }while(pageToken);
+
+    if(!allSearchItems.length){A.videos=[];A.step='dashboard';render();return;}
+
+    // ── Langkah 2: Fetch detail video dalam batch 50 ───────────
+    var allVideos=[];
+    for(var b=0;b<allSearchItems.length;b+=50){
+      var batch=allSearchItems.slice(b,b+50);
+      var ids=batch.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
+      if(!ids)continue;
+      var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
+        {headers:{Authorization:'Bearer '+A.token}});
+      var d2=await r2.json();
+      if(d2.error)throw new Error(d2.error.message);
+      allVideos=allVideos.concat(d2.items||[]);
+    }
+
+    A.videos=allVideos;
+    // ── Langkah 3: Baca jadwal yang sudah ada di YouTube ───────
     A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
     saveSched();A.step='dashboard';render();
   }catch(e){
@@ -813,7 +835,7 @@ function renderCfgModal(){
 
     '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Daftar Channel</div>'+
     '<div id="ch-cfg-list">'+chRows+'</div>'+
-    '<div id="ch-cfg-list">'+chRows+'</div>'+
+    '<button onclick="addChConfigRow()" '+
       'class="btn btn-sm btn-ghost" style="margin-bottom:10px">+ Tambah Channel</button>'+
 
     '<div class="modal-footer">'+
@@ -1227,7 +1249,7 @@ function renderCalendar(){
     else if(i>=sd+dim){day=i-sd-dim+1;off=true;}
     else day=i-sd+1;
     var isT=!off&&day===td.getDate()&&m===td.getMonth()&&y===td.getFullYear();
-    var evs=ev[day]||[];
+    var evs=off?[]:(ev[day]||[]);  // sel abu-abu (overflow) tidak pernah tampilkan event
     h+='<div class="cal-cell'+(off?' dim':'')+(isT?' today':'')+'"><div class="cal-num">'+day+'</div>';
     evs.slice(0,2).forEach(function(v){var t=getTitle(v);h+='<div class="cal-ev" title="'+esc(t)+'">'+esc(t.length>16?t.slice(0,14)+'…':t)+'</div>';});
     if(evs.length>2)h+='<div class="cal-more">+' +(evs.length-2)+' lagi</div>';
