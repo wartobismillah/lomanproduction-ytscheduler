@@ -11,10 +11,12 @@
 <script>
 var CONFIG = {
   // ── Client ID: bisa 1 atau lebih sebagai cadangan ──────────
+  // PENTING: Setiap Client ID harus dari PROJECT GCP YANG BERBEDA
+  // agar quota benar-benar terpisah (10.000 unit per project per hari)
   clientIds: [
     '854334250220-h1vepbnct1p9obq6d4pvq9f76rdfo8j0.apps.googleusercontent.com',   // ← Client ID #1 (utama)
-    '751998485199-s1ddtuuhuaa36368pn8v05lmk0j5qbnt.apps.googleusercontent.com',   // ← Client ID #2 (cadangan, boleh dikosongkan)
-    '953421001793-g6irnag87ob4rlp556d56red4emnv1jt.apps.googleusercontent.com',   // ← Client ID #3 (cadangan, boleh dikosongkan)
+    '751998485199-s1ddtuuhuaa36368pn8v05lmk0j5qbnt.apps.googleusercontent.com',   // ← Client ID #2 (cadangan)
+    '953421001793-g6irnag87ob4rlp556d56red4emnv1jt.apps.googleusercontent.com',   // ← Client ID #3 (cadangan)
   ],
 
   // ── Daftar channel kamu ────────────────────────────────────
@@ -108,7 +110,7 @@ var CONFIG = {
 .chip:hover{border-color:var(--red);color:var(--red)}
 .chip.active{background:var(--red-bg);border-color:var(--red);color:var(--red);font-weight:700}
 
-/* ─ Video row (per-video tab) ─ */
+/* ─ Video row ─ */
 .vlist{display:flex;flex-direction:column;gap:6px}
 .vrow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:11px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--r2);transition:all .15s}
 .vrow:hover{border-color:var(--border2);box-shadow:var(--sh)}
@@ -175,7 +177,6 @@ var CONFIG = {
 .sel-row .sthumb{width:56px;height:32px;object-fit:cover;border-radius:3px;background:var(--hover);flex-shrink:0}
 .sel-row .sthumb-ph{width:56px;height:32px;border-radius:3px;background:var(--hover);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 .sel-row .stitle{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-/* reorder arrows */
 .reorder{display:flex;flex-direction:column;gap:1px;flex-shrink:0}
 .reorder button{width:18px;height:16px;border:1px solid var(--border);border-radius:3px;background:var(--card);cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;color:var(--t2);padding:0;transition:all .15s}
 .reorder button:hover{background:var(--hover);color:var(--text)}
@@ -237,6 +238,13 @@ var CONFIG = {
 .cswatch:hover{transform:scale(1.15)}
 .cswatch.sel{border-color:var(--text)}
 
+/* Quota status bar */
+.quota-bar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--card);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:12px;font-size:11px;flex-wrap:wrap}
+.quota-pip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px}
+.quota-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-b)}
+.quota-warn{background:var(--orange-bg);color:var(--orange);border:1px solid var(--orange-b)}
+.quota-dead{background:var(--red-bg);color:var(--red);border:1px solid var(--red-b)}
+
 /* Misc */
 .empty{text-align:center;padding:3rem 1rem;color:var(--t3)}
 .loader{display:flex;align-items:center;justify-content:center;gap:10px;padding:3rem;color:var(--t2);font-size:13px}
@@ -266,17 +274,22 @@ var CONFIG = {
 <div id="toasts"></div>
 
 <script>
-// Helper: ambil semua client ID yang valid
+/* ─────────────────────────────────────────────────────────────
+   HELPER: ambil semua client ID yang valid
+───────────────────────────────────────────────────────────── */
 function getClientIds(){
   var ids=(CONFIG.clientIds||[]).filter(function(x){return x&&x.trim()});
   if(!ids.length&&CONFIG.clientId)ids=[CONFIG.clientId];
   return ids;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   STATE
+───────────────────────────────────────────────────────────── */
 var A={
   step:'setup',channels:lsCh(),active:null,token:'',
-  cidIdx:0,          // index ke getClientIds() yang sedang dipakai
-  tokenExpiry:0,     // timestamp ms kapan token expired
+  cidIdx:0,
+  tokenExpiry:0,
   videos:[],scheduled:{},
   filter:'all',tab:'list',
   openPanel:null,
@@ -284,10 +297,12 @@ var A={
   newCh:{name:'',cid:'',color:'#FF0000'},
   calM:new Date().getMonth(),calY:new Date().getFullYear(),
   ytChannels:[],ytSelectedChannel:null,
-  hidden:{},  // videoId -> true (disembunyikan dari daftar)
+  hidden:{},
   showHidden:false,
+  // ── Quota tracker: index cid -> status ('ok'|'dead')
+  quotaStatus:{},
   bulk:{
-    subTab:'unsched',  // 'unsched' | 'sched'
+    subTab:'unsched',
     mode:'interval',
     interval:1,
     customN:3,
@@ -299,11 +314,14 @@ var A={
 };
 var COLORS=['#FF0000','#1A7F3C','#1A56DB','#9333EA','#EA580C','#0891B2','#BE185D','#CA8A04'];
 
+/* ─────────────────────────────────────────────────────────────
+   LOCAL STORAGE
+───────────────────────────────────────────────────────────── */
 function lsCh(){
   var stored=[];try{stored=JSON.parse(localStorage.getItem('yt_ch')||'[]')}catch(e){}
   var ids=getClientIds();
   var cid0=ids[0]||'';
-  if(cid0 && CONFIG.channels && CONFIG.channels.length){
+  if(cid0&&CONFIG.channels&&CONFIG.channels.length){
     CONFIG.channels.forEach(function(c){
       var exists=stored.find(function(s){return s.name===c.name});
       if(!exists)stored.unshift({id:'cfg_'+c.name.replace(/\s/g,'_'),name:c.name,cid:cid0,color:c.color||'#FF0000',fromConfig:true});
@@ -321,19 +339,13 @@ function saveSched(){if(!A.active)return;localStorage.setItem('yt_sc_'+A.active.
 function saveHidden(){if(!A.active)return;localStorage.setItem('yt_hid_'+A.active.id,JSON.stringify(A.hidden))}
 function loadHidden(ch){try{return JSON.parse(localStorage.getItem('yt_hid_'+ch.id)||'{}')}catch(e){return{}}}
 function loadSched(ch){try{return JSON.parse(localStorage.getItem('yt_sc_'+ch.id)||'{}')}catch(e){return{}}}
+
+/* ─────────────────────────────────────────────────────────────
+   UTILS
+───────────────────────────────────────────────────────────── */
 function tzOffset(){return-new Date().getTimezoneOffset()/60}
-function tzLabel(){
-  var o=tzOffset();
-  // Named timezone labels
-  var names={7:'WIB',8:'WITA',9:'WIT'};
-  return names[o]||(o>=0?'UTC+'+o:'UTC'+o);
-}
-// FIXED: new Date('YYYY-MM-DDTHH:MM:SS') tanpa timezone suffix
-// sudah diinterpretasi browser sebagai LOCAL time,
-// jadi .toISOString() langsung menghasilkan UTC yang benar.
-function localToUTC(date,time){
-  return new Date(date+'T'+(time||'00:00')+':00').toISOString();
-}
+function tzLabel(){var o=tzOffset();var names={7:'WIB',8:'WITA',9:'WIT'};return names[o]||(o>=0?'UTC+'+o:'UTC'+o);}
+function localToUTC(date,time){return new Date(date+'T'+(time||'00:00')+':00').toISOString();}
 function utcToLocal(iso){
   if(!iso)return{date:'',time:''};
   var d=new Date(iso);
@@ -349,6 +361,7 @@ function $(id){return document.getElementById(id)}
 function val(id){return($( id)||{}).value||''}
 function today(){return new Date().toISOString().split('T')[0]}
 function tomorrow(){var d=new Date();d.setDate(d.getDate()+1);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function isQuotaError(msg){return(msg||'').toLowerCase().includes('quota')||(msg||'').includes('quotaExceeded');}
 
 function toast(msg,type){
   var el=document.createElement('div');el.className='toast '+(type||'inf');el.textContent=msg;
@@ -356,7 +369,9 @@ function toast(msg,type){
   setTimeout(function(){el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateY(8px)';setTimeout(function(){el.remove()},320)},3200);
 }
 
-/* ─ GIS / API ─ */
+/* ─────────────────────────────────────────────────────────────
+   GIS / OAUTH
+───────────────────────────────────────────────────────────── */
 function loadGIS(){
   return new Promise(function(res,rej){
     if(window.google&&window.google.accounts){res();return;}
@@ -365,11 +380,11 @@ function loadGIS(){
     document.head.appendChild(s);
   });
 }
-async function signIn(ch, cidIdxOverride){
+
+async function signIn(ch,cidIdxOverride){
   try{
     await loadGIS();
     var ids=getClientIds();
-    // Ch may have own cid (from config), otherwise use rotating cidIdx
     var cid=ch.cid;
     if(!cid){
       if(cidIdxOverride!==undefined)A.cidIdx=cidIdxOverride;
@@ -381,9 +396,8 @@ async function signIn(ch, cidIdxOverride){
       scope:'https://www.googleapis.com/auth/youtube',
       callback:async function(r){
         if(r.error){
-          // Try next clientId if available
           var nextIdx=(A.cidIdx+1);
-          if(ids.length>1 && nextIdx<ids.length){
+          if(ids.length>1&&nextIdx<ids.length){
             toast('Client ID #'+(A.cidIdx+1)+' gagal, coba #'+(nextIdx+1)+'...','inf');
             A.cidIdx=nextIdx;
             setTimeout(function(){signIn(ch,nextIdx)},500);
@@ -400,7 +414,52 @@ async function signIn(ch, cidIdxOverride){
     }).requestAccessToken({prompt:'select_account'});
   }catch(e){toast('Error: '+e.message,'err');}
 }
-// Try next client ID manually
+
+/* ─────────────────────────────────────────────────────────────
+   SWITCH CID — FIX UTAMA: ganti project tanpa popup
+───────────────────────────────────────────────────────────── */
+function switchToNextCid(){
+  return new Promise(function(resolve){
+    var ids=getClientIds();
+    // Cari cid berikutnya yang belum dead
+    var startIdx=A.cidIdx;
+    var found=false;
+    for(var i=1;i<=ids.length;i++){
+      var tryIdx=(startIdx+i)%ids.length;
+      if(A.quotaStatus[tryIdx]!=='dead'){
+        A.cidIdx=tryIdx;found=true;break;
+      }
+    }
+    if(!found){
+      toast('Quota semua '+ids.length+' project sudah habis hari ini 😭','err');
+      resolve(false);return;
+    }
+    var newCid=ids[A.cidIdx];
+    toast('Quota habis! Otomatis ganti ke project #'+(A.cidIdx+1)+'...','inf');
+    try{
+      google.accounts.oauth2.initTokenClient({
+        client_id:newCid,
+        scope:'https://www.googleapis.com/auth/youtube',
+        callback:function(r){
+          if(!r.error){
+            A.token=r.access_token;
+            A.tokenExpiry=Date.now()+(r.expires_in||3600)*1000;
+            A._warned=false;
+            toast('✓ Beralih ke project #'+(A.cidIdx+1),'ok');
+            resolve(true);
+          }else{
+            // Tandai cid ini juga dead, coba rekursif
+            A.quotaStatus[A.cidIdx]='dead';
+            resolve(switchToNextCid());
+          }
+        }
+      }).requestAccessToken({prompt:''});
+    }catch(e){
+      resolve(false);
+    }
+  });
+}
+
 function rotateClientId(){
   var ids=getClientIds();
   if(ids.length<=1){toast('Hanya ada 1 Client ID di config','inf');return;}
@@ -408,10 +467,12 @@ function rotateClientId(){
   toast('Beralih ke Client ID #'+(A.cidIdx+1),'inf');
   if(A.active)signIn(A.active,A.cidIdx);
 }
-// After login: fetch all YT channels for this account, let user pick
+
+/* ─────────────────────────────────────────────────────────────
+   PICK CHANNEL
+───────────────────────────────────────────────────────────── */
 async function pickChannel(){
   try{
-    // Ambil info channel yang sedang aktif (sesuai akun yg dipilih saat OAuth)
     var r=await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics&mine=true',
       {headers:{Authorization:'Bearer '+A.token}});
     var d=await r.json();
@@ -419,7 +480,6 @@ async function pickChannel(){
     var channels=d.items||[];
     A.ytChannels=channels;
     A.ytSelectedChannel=channels[0]||null;
-    // Selalu tampilkan konfirmasi channel dulu
     A.step='pick_channel';
     render();
   }catch(e){
@@ -434,15 +494,9 @@ async function confirmYtChannel(idx){
 }
 
 function reloginDifferentChannel(){
-  // Force Google to show account/channel picker again
   var activeCh=A.active;
   A.token='';A.tokenExpiry=0;A.ytChannels=[];A.ytSelectedChannel=null;
-  if(activeCh){
-    // Re-trigger OAuth with prompt=select_account (already set globally)
-    signIn(activeCh);
-  }else{
-    A.step='setup';render();
-  }
+  if(activeCh){signIn(activeCh);}else{A.step='setup';render();}
 }
 
 function renderPickChannel(){
@@ -458,16 +512,12 @@ function renderPickChannel(){
   var h='<div style="max-width:460px;margin:2rem auto">';
   h+='<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">';
   h+='<h2 style="font-size:17px;font-weight:700;margin-bottom:4px">Konfirmasi Channel</h2>';
-  h+='<p style="font-size:13px;color:var(--t2);margin-bottom:1.25rem;line-height:1.55">'+
-    'Apakah ini channel yang ingin kamu jadwalkan?</p>';
-
-  // Channel card
+  h+='<p style="font-size:13px;color:var(--t2);margin-bottom:1.25rem;line-height:1.55">Apakah ini channel yang ingin kamu jadwalkan?</p>';
   h+='<div style="display:flex;align-items:center;gap:14px;padding:14px;background:var(--hover);border-radius:var(--r2);margin-bottom:1.25rem">';
   if(ch){
     h+=(thumb?'<img src="'+esc(thumb.url)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0">':
       '<div style="width:56px;height:56px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700;flex-shrink:0">'+esc(name[0])+'</div>');
-    h+='<div>';
-    h+='<div style="font-size:15px;font-weight:700">'+esc(name)+'</div>';
+    h+='<div><div style="font-size:15px;font-weight:700">'+esc(name)+'</div>';
     if(handle)h+='<div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(handle)+'</div>';
     if(subs)h+='<div style="font-size:12px;color:var(--t3);margin-top:1px">'+esc(subs)+'</div>';
     h+='</div>';
@@ -475,29 +525,26 @@ function renderPickChannel(){
     h+='<div style="font-size:13px;color:var(--t3)">Tidak ada channel ditemukan.</div>';
   }
   h+='</div>';
-
-  // Action buttons
   h+='<div style="display:flex;gap:8px">';
   h+='<button class="btn btn-red" style="flex:1" onclick="confirmYtChannel(0)">✓ Ya, Lanjutkan</button>';
   h+='</div>';
-
-  // Help: wrong channel
   h+='<div style="margin-top:14px;padding:12px;background:var(--orange-bg);border:1px solid var(--orange-b);border-radius:var(--r2)">';
   h+='<div style="font-size:12px;font-weight:700;color:var(--orange);margin-bottom:6px">⚠ Channel salah?</div>';
-  h+='<div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:8px">'+
-    'Jika channel di atas bukan yang kamu mau, klik tombol di bawah dan <b>pilih identitas YouTube yang berbeda</b> di popup Google.'+
-    '<br><br>Contoh: jika muncul opsi "<b>NamaChannel (YouTube)</b>", pilih itu — bukan akun Gmail.'+
-  '</div>';
+  h+='<div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:8px">Jika channel di atas bukan yang kamu mau, klik tombol di bawah dan <b>pilih identitas YouTube yang berbeda</b> di popup Google.</div>';
   h+='<button class="btn btn-sm" onclick="reloginDifferentChannel()">🔄 Ganti Channel / Akun</button>';
   h+='</div>';
-
   h+='</div></div>';
   return h;
 }
 
-async function fetchVideos(){
+/* ─────────────────────────────────────────────────────────────
+   FETCH VIDEOS — dengan auto-retry quota per project
+───────────────────────────────────────────────────────────── */
+async function fetchVideos(retryCount){
+  retryCount=retryCount||0;
+  var ids=getClientIds();
   try{
-    // ── Langkah 1: Ambil SEMUA video pakai pagination ──────────
+    // ── Langkah 1: Ambil SEMUA video dengan pagination ─────
     var allSearchItems=[];
     var pageToken='';
     do{
@@ -505,55 +552,124 @@ async function fetchVideos(){
       if(pageToken)url+='&pageToken='+encodeURIComponent(pageToken);
       var r1=await fetch(url,{headers:{Authorization:'Bearer '+A.token}});
       var d1=await r1.json();
-      if(d1.error)throw new Error(d1.error.message);
+      if(d1.error){
+        var errMsg=d1.error.message||'';
+        // ── AUTO SWITCH: quota habis, coba project berikutnya
+        if(isQuotaError(errMsg)&&retryCount<ids.length-1){
+          A.quotaStatus[A.cidIdx]='dead';
+          var switched=await switchToNextCid();
+          if(switched)return fetchVideos(retryCount+1);
+        }
+        throw new Error(errMsg);
+      }
       if(d1.items&&d1.items.length)allSearchItems=allSearchItems.concat(d1.items);
       pageToken=d1.nextPageToken||'';
     }while(pageToken);
 
     if(!allSearchItems.length){A.videos=[];A.step='dashboard';render();return;}
 
-    // ── Langkah 2: Fetch detail video dalam batch 50 ───────────
+    // ── Langkah 2: Fetch detail video dalam batch 50 ──────
     var allVideos=[];
     for(var b=0;b<allSearchItems.length;b+=50){
       var batch=allSearchItems.slice(b,b+50);
-      var ids=batch.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
-      if(!ids)continue;
-      var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+ids,
+      var vids=batch.map(function(i){return i.id.videoId}).filter(Boolean).join(',');
+      if(!vids)continue;
+      var r2=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,status,contentDetails&id='+vids,
         {headers:{Authorization:'Bearer '+A.token}});
       var d2=await r2.json();
-      if(d2.error)throw new Error(d2.error.message);
+      if(d2.error){
+        var errMsg2=d2.error.message||'';
+        if(isQuotaError(errMsg2)&&retryCount<ids.length-1){
+          A.quotaStatus[A.cidIdx]='dead';
+          var switched2=await switchToNextCid();
+          if(switched2)return fetchVideos(retryCount+1);
+        }
+        throw new Error(errMsg2);
+      }
       allVideos=allVideos.concat(d2.items||[]);
     }
 
+    // ── Langkah 3: Baca jadwal dari YouTube ───────────────
     A.videos=allVideos;
-    // ── Langkah 3: Baca jadwal yang sudah ada di YouTube ───────
     A.videos.forEach(function(v){if(v.status&&v.status.publishAt)A.scheduled[v.id]=v.status.publishAt;});
+    // Reset quota status untuk cid yang berhasil
+    A.quotaStatus[A.cidIdx]='ok';
     saveSched();A.step='dashboard';render();
+
   }catch(e){
     var msg=e.message||'';
-    if(msg.includes('403'))msg='Akses ditolak — pastikan YouTube Data API v3 aktif di Google Cloud';
+    if(msg.includes('403')&&!isQuotaError(msg))msg='Akses ditolak — pastikan YouTube Data API v3 aktif di Google Cloud';
     else if(msg.includes('401'))msg='Token tidak valid — coba Sign In ulang';
-    else if(msg.includes('quota'))msg='Quota API habis — coba lagi besok atau ganti Client ID';
+    else if(isQuotaError(msg)){
+      A.quotaStatus[A.cidIdx]='dead';
+      if(retryCount<ids.length-1){
+        // Masih ada project yang belum dicoba
+        var switched3=await switchToNextCid();
+        if(switched3)return fetchVideos(retryCount+1);
+      }
+      msg='Quota semua '+ids.length+' project habis — coba lagi besok';
+    }
     toast('Gagal memuat: '+msg,'err');
     A.step='pick_channel';render();
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   API CALLS — dengan auto-switch quota saat update
+───────────────────────────────────────────────────────────── */
 async function apiSet(videoId,publishAt){
-  var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
-    method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
-    body:JSON.stringify({id:videoId,status:{privacyStatus:'private',publishAt:publishAt}})
-  });
-  var d=await r.json();if(d.error)throw new Error(d.error.message);
-}
-async function apiUnset(videoId){
-  var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
-    method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
-    body:JSON.stringify({id:videoId,status:{privacyStatus:'private'}})
-  });
-  var d=await r.json();if(d.error)throw new Error(d.error.message);
+  var ids=getClientIds();
+  for(var attempt=0;attempt<=ids.length;attempt++){
+    try{
+      var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
+        method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
+        body:JSON.stringify({id:videoId,status:{privacyStatus:'private',publishAt:publishAt}})
+      });
+      var d=await r.json();
+      if(d.error){
+        if(isQuotaError(d.error.message)&&attempt<ids.length-1){
+          A.quotaStatus[A.cidIdx]='dead';
+          var ok=await switchToNextCid();
+          if(!ok)throw new Error('Quota semua project habis');
+          continue;
+        }
+        throw new Error(d.error.message);
+      }
+      return d;
+    }catch(e){
+      if(attempt>=ids.length-1)throw e;
+    }
+  }
 }
 
-/* ─ Per-video actions ─ */
+async function apiUnset(videoId){
+  var ids=getClientIds();
+  for(var attempt=0;attempt<=ids.length;attempt++){
+    try{
+      var r=await fetch('https://www.googleapis.com/youtube/v3/videos?part=status',{
+        method:'PUT',headers:{Authorization:'Bearer '+A.token,'Content-Type':'application/json'},
+        body:JSON.stringify({id:videoId,status:{privacyStatus:'private'}})
+      });
+      var d=await r.json();
+      if(d.error){
+        if(isQuotaError(d.error.message)&&attempt<ids.length-1){
+          A.quotaStatus[A.cidIdx]='dead';
+          var ok=await switchToNextCid();
+          if(!ok)throw new Error('Quota semua project habis');
+          continue;
+        }
+        throw new Error(d.error.message);
+      }
+      return d;
+    }catch(e){
+      if(attempt>=ids.length-1)throw e;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PER-VIDEO ACTIONS
+───────────────────────────────────────────────────────────── */
 async function doSchedule(vid){
   var date=val('d-'+vid),time=val('t-'+vid)||'10:00';
   if(!date){toast('Pilih tanggal dulu','err');return;}
@@ -565,13 +681,17 @@ async function doSchedule(vid){
     toast('✓ Dijadwalkan: '+fmtDate(pub),'ok');render();
   }catch(e){toast('Gagal: '+e.message,'err');if(btn){btn.disabled=false;btn.textContent='Simpan';}}
 }
+
 async function doUnschedule(vid){
   try{await apiUnset(vid);delete A.scheduled[vid];saveSched();toast('Jadwal dihapus','inf');render();}
   catch(e){toast('Error: '+e.message,'err');}
 }
+
 function openPanel(id){A.openPanel=(A.openPanel===id?null:id);render();}
 
-/* ─ Bulk actions ─ */
+/* ─────────────────────────────────────────────────────────────
+   BULK ACTIONS
+───────────────────────────────────────────────────────────── */
 function getBulkPreview(){
   var b=A.bulk,sel=b.selected,time=val('b-time')||b.time;
   var result=[];
@@ -593,13 +713,10 @@ function getBulkPreview(){
 }
 
 async function applyBulk(){
-  // read current form values
   A.bulk.time=val('b-time')||A.bulk.time;
   if(A.bulk.mode==='interval')A.bulk.startDate=val('b-start')||A.bulk.startDate;
   if(A.bulk.mode==='custom'){
-    A.bulk.selected.forEach(function(id){
-      var v=val('bc-'+id);if(v)A.bulk.customDates[id]=v;
-    });
+    A.bulk.selected.forEach(function(id){var v=val('bc-'+id);if(v)A.bulk.customDates[id]=v;});
   }
   var preview=getBulkPreview();
   if(!preview.length){toast('Tidak ada jadwal untuk diterapkan','err');return;}
@@ -631,16 +748,9 @@ function selectAllBulk(){
   else A.bulk.selected=unscheduled.map(function(v){return v.id});
   render();
 }
-function moveUp(id){
-  var arr=A.bulk.selected,i=arr.indexOf(id);
-  if(i>0){arr.splice(i,1);arr.splice(i-1,0,id);}render();
-}
-function moveDown(id){
-  var arr=A.bulk.selected,i=arr.indexOf(id);
-  if(i<arr.length-1){arr.splice(i,1);arr.splice(i+1,0,id);}render();
-}
+function moveUp(id){var arr=A.bulk.selected,i=arr.indexOf(id);if(i>0){arr.splice(i,1);arr.splice(i-1,0,id);}render();}
+function moveDown(id){var arr=A.bulk.selected,i=arr.indexOf(id);if(i<arr.length-1){arr.splice(i,1);arr.splice(i+1,0,id);}render();}
 function setInterval2(n){
-  // save current form values before re-render
   var bs=val('b-start'),bt=val('b-time');
   if(bs)A.bulk.startDate=bs;if(bt)A.bulk.time=bt;
   A.bulk.interval=n;render();
@@ -651,12 +761,26 @@ function setMode(m){
   A.bulk.mode=m;render();
 }
 
-/* ─ Misc ─ */
+async function confirmUnscheduleAll(){
+  var scheduled=getDrafts().filter(function(v){return!!A.scheduled[v.id]});
+  if(!scheduled.length)return;
+  if(!confirm('Hapus jadwal untuk SEMUA '+scheduled.length+' video? Tindakan ini tidak bisa dibatalkan.'))return;
+  var ok=0;
+  for(var i=0;i<scheduled.length;i++){
+    try{await apiUnset(scheduled[i].id);delete A.scheduled[scheduled[i].id];ok++;}catch(e){}
+  }
+  saveSched();toast(ok+' jadwal berhasil dihapus','inf');render();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MISC
+───────────────────────────────────────────────────────────── */
 function hideVideo(id){A.hidden[id]=true;saveHidden();render();}
 function unhideVideo(id){delete A.hidden[id];saveHidden();render();}
-function signOut(){A.token='';A.videos=[];A.scheduled={};A.hidden={};A.step='setup';A.active=null;A.ytChannels=[];A.ytSelectedChannel=null;render();toast('Signed out','inf');}
+function signOut(){A.token='';A.videos=[];A.scheduled={};A.hidden={};A.step='setup';A.active=null;A.ytChannels=[];A.ytSelectedChannel=null;A.quotaStatus={};render();toast('Signed out','inf');}
 async function refresh(){A.step='loading';render();await fetchVideos();}
 function switchCh(ch){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;render();setTimeout(function(){signIn(ch)},100);}
+
 function addChannel(){
   var name=val('nc-name').trim()||'Channel Baru';
   var cid=val('nc-cid').trim()||getClientIds()[0]||'';
@@ -665,39 +789,20 @@ function addChannel(){
   A.channels.push(ch);saveCh();A.modal=null;A.newCh={name:'',cid:'',color:'#FF0000'};
   toast('Channel ditambahkan!','ok');render();setTimeout(function(){signIn(ch)},150);
 }
+
 function delChannel(id){
   A.channels=A.channels.filter(function(c){return c.id!==id});saveCh();
   if(A.active&&A.active.id===id){A.token='';A.videos=[];A.scheduled={};A.step='setup';A.active=null;}
   render();toast('Channel dihapus','inf');
 }
+
 function getDrafts(){
-  // search.list?forMine=true sudah hanya return video milik channel aktif
-  // Filter: private (draft & scheduled) dan unlisted
-  // Video public tidak masuk karena search?forMine hanya return yg bisa diakses owner
   return A.videos.filter(function(v){
     var s=v.status||{};
     if(A.hidden[v.id])return false;
     return s.privacyStatus==='private'||s.privacyStatus==='unlisted';
   });
 }
-
-function renderHiddenList(){
-  var hiddenVideos=A.videos.filter(function(v){return A.hidden[v.id]});
-  if(!hiddenVideos.length)return'';
-  var h='<div style="margin-bottom:10px;padding:10px 12px;background:var(--hover);border-radius:var(--r2);border:1px solid var(--border)">';
-  h+='<div style="font-size:11px;font-weight:700;color:var(--t3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Video Tersembunyi</div>';
-  hiddenVideos.forEach(function(v){
-    var title=getTitle(v);
-    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">';
-    h+='<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t2)">'+esc(title)+'</span>';
-    h+='<button class="btn btn-xs btn-ghost" onclick="unhideVideo(\''+v.id+'\')" style="font-size:11px;color:var(--blue);flex-shrink:0">Tampilkan</button>';
-    h+='</div>';
-  });
-  h+='<div style="margin-top:8px"><button class="btn btn-xs btn-ghost" onclick="Object.keys(A.hidden).forEach(function(id){delete A.hidden[id]});saveHidden();render()">Tampilkan Semua</button></div>';
-  h+='</div>';
-  return h;
-}
-
 function getFiltered(){
   var d=getDrafts();
   if(A.filter==='scheduled')return d.filter(function(v){return A.scheduled[v.id]});
@@ -707,15 +812,12 @@ function getFiltered(){
 function getThumb(v){var t=v.snippet&&v.snippet.thumbnails;return t&&(t.medium||t.default);}
 function getTitle(v){return(v.snippet&&v.snippet.title)||'Untitled'}
 
-/* ─ RENDER ─ */
-/* ── GitHub self-update ── */
+/* ─────────────────────────────────────────────────────────────
+   GITHUB CONFIG SAVE
+───────────────────────────────────────────────────────────── */
 function ghGet(key){return localStorage.getItem('gh_'+key)||''}
 function ghSet(key,val){localStorage.setItem('gh_'+key,val)}
-
-function toB64(str){
-  // UTF-8 safe base64
-  return btoa(unescape(encodeURIComponent(str)));
-}
+function toB64(str){return btoa(unescape(encodeURIComponent(str)))}
 
 async function ghFetchFile(){
   var token=ghGet('token'),repo=ghGet('repo');
@@ -730,8 +832,6 @@ async function ghFetchFile(){
 async function saveConfigToGitHub(){
   var clientId=val('cfg-cid').trim();
   if(!clientId){toast('Masukkan Client ID','err');return;}
-
-  // Collect channels from dynamic inputs
   var chInputs=document.querySelectorAll('.ch-cfg-row');
   var channels=[];
   chInputs.forEach(function(row){
@@ -739,34 +839,27 @@ async function saveConfigToGitHub(){
     if(n&&n.value.trim())channels.push({name:n.value.trim(),color:c?c.value:'#FF0000'});
   });
   if(!channels.length){toast('Tambahkan minimal 1 channel','err');return;}
-
   var token=val('cfg-token').trim(),repo=val('cfg-repo').trim();
   if(!token||!repo){toast('Isi GitHub Token dan Repo','err');return;}
   ghSet('token',token);ghSet('repo',repo);
-
   var btn=$('btn-save-cfg');
   btn.disabled=true;btn.textContent='Menyimpan ke GitHub...';
-
   try{
     var fileData=await ghFetchFile();
     var current=decodeURIComponent(escape(atob(fileData.content.replace(/\n/g,''))));
     var sha=fileData.sha;
-
-    // Build new CONFIG block
     var chLines=channels.map(function(c){
-      return "    { name: '"+c.name.replace(/'/g,"\\'")+"', color: '"+c.color+"' }";
+      return"    { name: '"+c.name.replace(/'/g,"\\'")+"', color: '"+c.color+"' }";
     }).join(',\n');
     var allCids=getClientIds();
     if(clientId&&!allCids.includes(clientId))allCids.unshift(clientId);
     if(!allCids.length)allCids=[''];
     var cidLines=allCids.concat(['','']).slice(0,3).map(function(c,i){
-      return "    '"+c+"',   // Client ID #"+(i+1)+(i===0?' (utama)':' (cadangan)');
+      return"    '"+c+"',   // Client ID #"+(i+1)+(i===0?' (utama)':' (cadangan)');
     }).join('\n');
     var newConfig="var CONFIG = {\n  clientIds: [\n"+cidLines+"\n  ],\n\n  channels: [\n"+chLines+"\n  ]\n};";
-
     var newContent=current.replace(/var CONFIG = \{[\s\S]*?\};/,newConfig);
-    if(newContent===current)throw new Error('Tidak bisa menemukan blok CONFIG di file. Pastikan filenya tidak diubah manual.');
-
+    if(newContent===current)throw new Error('Tidak bisa menemukan blok CONFIG di file.');
     var r=await fetch('https://api.github.com/repos/'+repo+'/contents/index.html',{
       method:'PUT',
       headers:{Authorization:'token '+token,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'},
@@ -774,13 +867,9 @@ async function saveConfigToGitHub(){
     });
     var rd=await r.json();
     if(!r.ok)throw new Error(rd.message||'GitHub error '+r.status);
-
     toast('✓ Berhasil disimpan ke GitHub!','ok');
     A.modal=null;
-    // Reload after short delay so GitHub Pages can deploy
-    setTimeout(function(){
-      if(confirm('Config tersimpan! Muat ulang halaman sekarang?'))location.reload();
-    },1500);
+    setTimeout(function(){if(confirm('Config tersimpan! Muat ulang halaman sekarang?'))location.reload();},1500);
   }catch(e){
     toast('Gagal: '+e.message,'err');
   }finally{
@@ -801,11 +890,9 @@ function addChConfigRow(){
 
 function renderCfgModal(){
   var token=ghGet('token'),repo=ghGet('repo');
-  // Build channel rows from CONFIG + existing channels
   var existingCh=CONFIG.channels&&CONFIG.channels.length?CONFIG.channels:
     A.channels.filter(function(c){return!c.fromConfig}).slice(0,8);
   if(!existingCh.length)existingCh=[{name:'',color:'#FF0000'}];
-
   var chRows=existingCh.map(function(c,i){
     return'<div class="ch-cfg-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+
       '<input class="ch-cfg-name" type="text" placeholder="Nama channel '+(i+1)+'" value="'+esc(c.name)+'" style="flex:1;padding:7px 9px;font-size:13px;border:1px solid var(--border2);border-radius:var(--r2);background:var(--card);color:var(--text)">'+
@@ -813,31 +900,18 @@ function renderCfgModal(){
       '<button onclick="this.closest(\'.ch-cfg-row\').remove()" style="width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--t3);font-size:16px;display:flex;align-items:center;justify-content:center">×</button>'+
     '</div>';
   }).join('');
-
   return'<div class="overlay" onclick="if(event.target===this){A.modal=null;render()}">'+
   '<div class="modal" style="width:480px">'+
     '<h3>⚙️ Simpan Config ke GitHub</h3>'+
-    '<div class="info-blue" style="margin-bottom:14px;font-size:12px">'+
-      'Config (Client ID + channel) akan disimpan langsung ke file <code>index.html</code> di repo GitHub-mu. '+
-      'GitHub Token hanya disimpan di browser ini, <b>tidak</b> masuk ke file GitHub.'+
-    '</div>'+
-
+    '<div class="info-blue" style="margin-bottom:14px;font-size:12px">Config akan disimpan ke <code>index.html</code> di repo GitHub-mu. GitHub Token hanya disimpan di browser ini.</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
-      '<div class="fg" style="margin:0"><label>GitHub Repo</label>'+
-        '<input id="cfg-repo" type="text" placeholder="username/repo-name" value="'+esc(repo)+'"></div>'+
-      '<div class="fg" style="margin:0"><label>Personal Access Token '+
-        '<a href="https://github.com/settings/tokens/new?scopes=contents&description=YT+Scheduler" target="_blank" style="color:var(--blue);font-size:10px;font-weight:400">Buat token →</a></label>'+
-        '<input id="cfg-token" type="password" placeholder="ghp_xxxxxxxxxxxx" value="'+esc(token)+'"></div>'+
+      '<div class="fg" style="margin:0"><label>GitHub Repo</label><input id="cfg-repo" type="text" placeholder="username/repo-name" value="'+esc(repo)+'"></div>'+
+      '<div class="fg" style="margin:0"><label>Personal Access Token <a href="https://github.com/settings/tokens/new?scopes=contents&description=YT+Scheduler" target="_blank" style="color:var(--blue);font-size:10px;font-weight:400">Buat →</a></label><input id="cfg-token" type="password" placeholder="ghp_xxxxxxxxxxxx" value="'+esc(token)+'"></div>'+
     '</div>'+
-
-    '<div class="fg"><label>Google OAuth Client ID</label>'+
-      '<input id="cfg-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(getClientIds()[0]||'')+'"></div>'+
-
+    '<div class="fg"><label>Google OAuth Client ID (utama)</label><input id="cfg-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(getClientIds()[0]||'')+'"></div>'+
     '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Daftar Channel</div>'+
     '<div id="ch-cfg-list">'+chRows+'</div>'+
-    '<button onclick="addChConfigRow()" '+
-      'class="btn btn-sm btn-ghost" style="margin-bottom:10px">+ Tambah Channel</button>'+
-
+    '<button onclick="addChConfigRow()" class="btn btn-sm btn-ghost" style="margin-bottom:10px">+ Tambah Channel</button>'+
     '<div class="modal-footer">'+
       '<button class="btn btn-sm" onclick="A.modal=null;render()">Batal</button>'+
       '<button class="btn btn-red btn-sm" id="btn-save-cfg" onclick="saveConfigToGitHub()">💾 Simpan ke GitHub</button>'+
@@ -845,6 +919,25 @@ function renderCfgModal(){
   '</div></div>';
 }
 
+/* ─────────────────────────────────────────────────────────────
+   QUOTA STATUS BAR — tampilkan status tiap project
+───────────────────────────────────────────────────────────── */
+function renderQuotaBar(){
+  var ids=getClientIds();
+  if(ids.length<=1)return'';
+  var pips=ids.map(function(id,i){
+    var status=A.quotaStatus[i];
+    var cls=status==='dead'?'quota-dead':(i===A.cidIdx?'quota-ok':'quota-warn');
+    var icon=status==='dead'?'✕':(i===A.cidIdx?'●':'○');
+    return'<span class="quota-pip '+cls+'">'+icon+' Project #'+(i+1)+'</span>';
+  }).join('');
+  return'<div class="quota-bar"><span style="font-size:11px;color:var(--t3);font-weight:700">QUOTA:</span>'+pips+
+    '<span style="font-size:10px;color:var(--t3);margin-left:auto">Aktif: Project #'+(A.cidIdx+1)+'</span></div>';
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TOKEN LABEL & TICKER
+───────────────────────────────────────────────────────────── */
 function tokenRemainingLabel(){
   if(!A.tokenExpiry)return'';
   var ms=A.tokenExpiry-Date.now();
@@ -855,13 +948,41 @@ function tokenRemainingLabel(){
   return'<span style="font-size:11px;font-weight:700;color:'+color+';padding:2px 7px;background:'+bg+';border-radius:4px">⏱ '+m+' mnt</span>';
 }
 
+setInterval(function(){
+  if(A.step==='dashboard'){
+    renderHeader();
+    var ms=A.tokenExpiry?A.tokenExpiry-Date.now():999999;
+    if(ms>0&&ms<5*60000&&!A._warned){
+      A._warned=true;
+      var ids=getClientIds();
+      if(ids.length>1)toast('Token hampir habis — akan otomatis ganti project','inf');
+      else toast('Token habis dalam <5 menit, siap-siap Sign In ulang','inf');
+    }
+    if(A.tokenExpiry&&Date.now()>A.tokenExpiry&&A.active){
+      A.tokenExpiry=0;A._warned=false;
+      var ids=getClientIds();
+      if(ids.length>1){
+        A.cidIdx=(A.cidIdx+1)%ids.length;
+        toast('Token expired → otomatis ganti ke project #'+(A.cidIdx+1),'inf');
+        signIn(A.active,A.cidIdx);
+      }else{
+        toast('Token expired — silakan Sign In ulang','inf');
+        renderHeader();
+      }
+    }
+  }
+},30000);
+
+/* ─────────────────────────────────────────────────────────────
+   HEADER RENDER
+───────────────────────────────────────────────────────────── */
 function renderHeader(){
   var r=$('hdr-r');if(!r)return;
   var cfgBtn='<button class="btn btn-sm btn-ghost" onclick="A.modal=\'cfg\';render()" title="Simpan config ke GitHub">⚙️ Config</button>';
   if(A.step==='dashboard'){
     var ids=getClientIds();
-    var cidInfo=ids.length>1?'<span style="font-size:10px;color:var(--t3);padding:2px 6px;border:1px solid var(--border);border-radius:4px">CID #'+(A.cidIdx+1)+'/'+ids.length+'</span>':'';
-    var rotBtn=ids.length>1?'<button class="btn btn-xs btn-ghost" onclick="rotateClientId()" title="Ganti ke Client ID berikutnya">⇄ Ganti CID</button>':'';
+    var cidInfo=ids.length>1?'<span style="font-size:10px;color:var(--t3);padding:2px 6px;border:1px solid var(--border);border-radius:4px">P#'+(A.cidIdx+1)+'/'+ids.length+'</span>':'';
+    var rotBtn=ids.length>1?'<button class="btn btn-xs btn-ghost" onclick="rotateClientId()" title="Ganti ke project berikutnya">⇄</button>':'';
     r.innerHTML=
       '<span style="font-size:12px;color:var(--t3)"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle"></span>'+esc(A.active?A.active.name:'')+'</span>'+
       tokenRemainingLabel()+' '+cidInfo+rotBtn+
@@ -873,34 +994,9 @@ function renderHeader(){
   }
 }
 
-// Ticker: update token label setiap 30 detik
-setInterval(function(){
-  if(A.step==='dashboard'){
-    renderHeader();
-    var ms=A.tokenExpiry?A.tokenExpiry-Date.now():999999;
-    // Warn at < 5 menit
-    if(ms>0&&ms<5*60000&&!A._warned){
-      A._warned=true;
-      var ids=getClientIds();
-      if(ids.length>1)toast('Token hampir habis — siap otomatis ganti Client ID','inf');
-      else toast('Token habis dalam <5 menit, siap-siap Sign In ulang','inf');
-    }
-    // Auto-rotate & re-sign when expired
-    if(A.tokenExpiry&&Date.now()>A.tokenExpiry&&A.active){
-      A.tokenExpiry=0;A._warned=false;
-      var ids=getClientIds();
-      if(ids.length>1){
-        A.cidIdx=(A.cidIdx+1)%ids.length;
-        toast('Token expired → otomatis ganti ke Client ID #'+(A.cidIdx+1),'inf');
-        signIn(A.active,A.cidIdx);
-      }else{
-        toast('Token expired — silakan Sign In ulang','inf');
-        renderHeader();
-      }
-    }
-  }
-},30000);
-
+/* ─────────────────────────────────────────────────────────────
+   CHANNEL BAR
+───────────────────────────────────────────────────────────── */
 function renderChBar(){
   if(!A.channels.length)return'';
   window._chm={};A.channels.forEach(function(c){window._chm[c.id]=c;});
@@ -912,12 +1008,14 @@ function renderChBar(){
   return'<div class="ch-bar"><span class="ch-label">Channel:</span><div class="ch-chips">'+chips+'</div><button class="btn-add-ch" onclick="A.modal=\'addch\';render()">+ Tambah</button></div>';
 }
 
+/* ─────────────────────────────────────────────────────────────
+   SETUP PAGE
+───────────────────────────────────────────────────────────── */
 function renderSetup(){
   var h=renderChBar();
   if(A.channels.length){
-    // Tampilkan tombol Sign In untuk tiap channel
     var btns=A.channels.map(function(ch){
-      return '<button class="btn btn-red" style="font-size:13px" onclick="switchCh(window._chm[\''+ch.id+'\'])">'+
+      return'<button class="btn btn-red" style="font-size:13px" onclick="switchCh(window._chm[\''+ch.id+'\'])">'+
         '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:'+esc(ch.color)+';margin-right:6px;vertical-align:middle"></span>'+
         'Masuk sebagai <b>'+esc(ch.name)+'</b></button>';
     }).join('');
@@ -927,22 +1025,17 @@ function renderSetup(){
     '</div>';
     return h;
   }
-  // No config yet — show two paths
   h+='<div class="setup-wrap"><div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;box-shadow:var(--sh)">'+
   '<h2>🎬 Setup YouTube Scheduler</h2>'+
   '<p class="setup-intro">Hubungkan channel YouTube-mu. Gratis, semua berjalan di browser.</p>'+
-
-  // PATH A — recommended: save to GitHub
   '<div style="border:2px solid var(--red);border-radius:var(--r2);padding:14px;margin-bottom:12px">'+
   '<div style="font-size:13px;font-weight:700;margin-bottom:4px">🚀 Cara Disarankan — Simpan ke GitHub</div>'+
-  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config tersimpan di file GitHub-mu. Buka dari browser/device apapun langsung jalan tanpa setup ulang.</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config tersimpan di file GitHub-mu. Buka dari browser/device apapun langsung jalan.</div>'+
   '<button class="btn btn-red btn-sm" onclick="A.modal=\'cfg\';render()">⚙️ Setup & Simpan ke GitHub</button>'+
   '</div>'+
-
-  // PATH B — manual
   '<div style="border:1px solid var(--border);border-radius:var(--r2);padding:14px">'+
   '<div style="font-size:13px;font-weight:700;margin-bottom:4px">📱 Setup Manual — Hanya Browser Ini</div>'+
-  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config disimpan di browser ini saja. Ganti browser atau device perlu setup ulang.</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.55">Config disimpan di browser ini saja.</div>'+
   '<ul class="steps" style="margin-bottom:12px">'+
   '<li><div class="sn">1</div><div>Buka <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → buat project → enable <b>YouTube Data API v3</b></div></li>'+
   '<li><div class="sn">2</div><div><b>Credentials</b> → OAuth 2.0 Client ID → Web Application → tambahkan URL hosting di Authorized Origins</div></li>'+
@@ -952,10 +1045,10 @@ function renderSetup(){
   '<div class="fg"><label>OAuth Client ID</label><input id="s-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>'+
   '<button class="btn btn-sm" onclick="setupFirst()">Hubungkan →</button>'+
   '</div>'+
-
   '</div></div>';
   return h;
 }
+
 function setupFirst(){
   var name=val('s-name').trim()||'Channel Saya',cid=val('s-cid').trim();
   if(!cid){toast('Masukkan Client ID','err');return;}
@@ -963,6 +1056,9 @@ function setupFirst(){
   A.channels.push(ch);saveCh();render();setTimeout(function(){signIn(ch)},100);
 }
 
+/* ─────────────────────────────────────────────────────────────
+   STATS
+───────────────────────────────────────────────────────────── */
 function renderStats(){
   var d=getDrafts(),sc=Object.keys(A.scheduled).length;
   var up=d.filter(function(v){return isSoon(A.scheduled[v.id])}).length;
@@ -974,7 +1070,29 @@ function renderStats(){
   '</div>';
 }
 
-/* Per-video tab */
+/* ─────────────────────────────────────────────────────────────
+   HIDDEN VIDEO LIST
+───────────────────────────────────────────────────────────── */
+function renderHiddenList(){
+  var hiddenVideos=A.videos.filter(function(v){return A.hidden[v.id]});
+  if(!hiddenVideos.length)return'';
+  var h='<div style="margin-bottom:10px;padding:10px 12px;background:var(--hover);border-radius:var(--r2);border:1px solid var(--border)">';
+  h+='<div style="font-size:11px;font-weight:700;color:var(--t3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Video Tersembunyi</div>';
+  hiddenVideos.forEach(function(v){
+    var title=getTitle(v);
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">';
+    h+='<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t2)">'+esc(title)+'</span>';
+    h+='<button class="btn btn-xs btn-ghost" onclick="unhideVideo(\''+v.id+'\')" style="font-size:11px;color:var(--blue);flex-shrink:0">Tampilkan</button>';
+    h+='</div>';
+  });
+  h+='<div style="margin-top:8px"><button class="btn btn-xs btn-ghost" onclick="Object.keys(A.hidden).forEach(function(id){delete A.hidden[id]});saveHidden();render()">Tampilkan Semua</button></div>';
+  h+='</div>';
+  return h;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PER-VIDEO TAB
+───────────────────────────────────────────────────────────── */
 function renderPerVideo(){
   var filtered=getFiltered(),d=getDrafts(),sc=Object.keys(A.scheduled).length;
   var hiddenCount=Object.keys(A.hidden).length;
@@ -989,7 +1107,7 @@ function renderPerVideo(){
     var allCount=A.videos.length;
     return h+'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div>'+
       '<p style="font-size:13px">Tidak ada video draft ditemukan.</p>'+
-      (allCount>0?'<p style="font-size:12px;color:var(--t3);margin-top:6px">'+allCount+' video terdeteksi dari channel, tapi semua berstatus public.<br>Pastikan video sudah diupload sebagai <b>Private</b> di YouTube Studio.</p>':'<p style="font-size:12px;color:var(--t3);margin-top:6px">Tidak ada video di channel ini.</p>')+
+      (allCount>0?'<p style="font-size:12px;color:var(--t3);margin-top:6px">'+allCount+' video terdeteksi, tapi semua berstatus public.<br>Pastikan video sudah diupload sebagai <b>Private</b> di YouTube Studio.</p>':'<p style="font-size:12px;color:var(--t3);margin-top:6px">Tidak ada video di channel ini.</p>')+
     '</div>';
   }
   h+='<div class="vlist vscroll">';
@@ -1001,7 +1119,7 @@ function renderPerVideo(){
     h+='<div style="min-width:0"><div class="vtitle" title="'+esc(title)+'">'+esc(title)+'</div>'+
       '<div class="vmeta">'+(sched?'<span class="badge '+(isSoon(sched)?'b-soon':'b-sched')+'">'+(isSoon(sched)?'⏰ ':'')+esc(fmtDate(sched))+'</span>':'<span class="badge b-draft">📝 Draft</span>')+'</div></div>';
     h+='<div class="vactions">';
-    if(sched)h+='<button class="btn-unsched" onclick="doUnschedule(\''+v.id+'\')">✕ Hapus Jadwal</button>';
+    if(sched)h+='<button class="btn-unsched" onclick="doUnschedule(\''+v.id+'\')" >✕ Hapus Jadwal</button>';
     h+='<button class="btn btn-xs'+(sched?'':' btn-red')+'" onclick="openPanel(\''+v.id+'\')">'+(isOpen?'✕ Tutup':(sched?'✏ Ubah':'📅 Jadwalkan'))+'</button>';
     h+='</div></div>';
     if(isOpen){
@@ -1010,8 +1128,8 @@ function renderPerVideo(){
       h+='<div><label>Jam</label><input type="time" id="t-'+v.id+'" value="'+esc(existing.time)+'"></div>';
       h+='<div style="display:flex;gap:6px;margin-top:auto">'+
         '<button class="btn btn-red btn-sm" id="save-'+v.id+'" onclick="doSchedule(\''+v.id+'\')">Simpan</button>'+
-        (sched?'<button class="btn btn-sm" onclick="doUnschedule(\''+v.id+'\')">Hapus</button>':'')+
-        '<button class="btn btn-sm btn-ghost" onclick="openPanel(\''+v.id+'\')">Batal</button>'+
+        (sched?'<button class="btn btn-sm" onclick="doUnschedule(\''+v.id+'\')" >Hapus</button>':'')+
+        '<button class="btn btn-sm btn-ghost" onclick="openPanel(\''+v.id+'\')" >Batal</button>'+
       '</div>';
       h+='</div>';
     }
@@ -1019,17 +1137,16 @@ function renderPerVideo(){
   h+='</div>';return h;
 }
 
-/* Bulk scheduler tab */
+/* ─────────────────────────────────────────────────────────────
+   BULK SCHEDULER
+───────────────────────────────────────────────────────────── */
 function renderBulk(){
   var b=A.bulk;
   var allDrafts=getDrafts();
   var unscheduled=allDrafts.filter(function(v){return!A.scheduled[v.id]});
   var scheduled=allDrafts.filter(function(v){return!!A.scheduled[v.id]});
-
-  // Sort scheduled by date ascending
   scheduled.sort(function(a,b){return new Date(A.scheduled[a.id])-new Date(A.scheduled[b.id])});
 
-  // Sub-tab bar
   var h='<div style="display:flex;gap:0;margin-bottom:1.25rem;border-bottom:1px solid var(--border)">';
   h+='<button class="tab'+(b.subTab==='unsched'?' active':'')+'" onclick="A.bulk.subTab=\'unsched\';render()">'+
     '📋 Belum Dijadwalkan <span style="background:var(--orange-bg);color:var(--orange);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">'+unscheduled.length+'</span></button>';
@@ -1037,52 +1154,33 @@ function renderBulk(){
     '✅ Sudah Terjadwal <span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">'+scheduled.length+'</span></button>';
   h+='</div>';
 
-  if(b.subTab==='sched'){
-    h+=renderBulkScheduled(scheduled);
-  } else {
-    h+=renderBulkUnsched(unscheduled,b);
-  }
+  if(b.subTab==='sched'){h+=renderBulkScheduled(scheduled);}
+  else{h+=renderBulkUnsched(unscheduled,b);}
   return h;
 }
 
 function renderBulkScheduled(scheduled){
-  var h='';
   if(!scheduled.length){
     return'<div class="empty"><div style="font-size:38px;margin-bottom:8px">📭</div><p style="font-size:13px">Belum ada video yang terjadwal.</p></div>';
   }
-
-  // Summary info
-  h+='<div class="info-green" style="margin-bottom:12px">'+
-    '✅ <b>'+scheduled.length+' video</b> sudah terjadwal. Klik <b>Ubah</b> untuk mengganti tanggal, atau <b>Hapus</b> untuk membatalkan jadwal.'+
-  '</div>';
-
+  var h='<div class="info-green" style="margin-bottom:12px">✅ <b>'+scheduled.length+' video</b> sudah terjadwal.</div>';
   h+='<div style="overflow-x:auto"><table class="ptable" style="width:100%">';
   h+='<thead><tr><th class="pnum">#</th><th>Video</th><th>Jadwal Publish</th><th style="width:110px">Aksi</th></tr></thead><tbody>';
-
   scheduled.forEach(function(v,i){
     var iso=A.scheduled[v.id];
     var thumb=getThumb(v),title=getTitle(v);
     var isSn=isSoon(iso);
-    var dateLabel=fmtDate(iso);
-    h+='<tr>';
-    h+='<td class="pnum">'+(i+1)+'</td>';
-    h+='<td style="vertical-align:middle">';
-    h+='<div style="display:flex;align-items:center;gap:8px">';
+    h+='<tr><td class="pnum">'+(i+1)+'</td>';
+    h+='<td style="vertical-align:middle"><div style="display:flex;align-items:center;gap:8px">';
     h+=(thumb?'<img src="'+esc(thumb.url)+'" style="width:56px;height:32px;object-fit:cover;border-radius:3px;flex-shrink:0" loading="lazy">':'<div style="width:56px;height:32px;background:var(--hover);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">▶</div>');
-    h+='<span class="ptitle" style="max-width:180px" title="'+esc(title)+'">'+esc(title)+'</span>';
-    h+='</div></td>';
-    h+='<td><span class="badge '+(isSn?'b-soon':'b-sched')+'" style="font-size:11px">'+(isSn?'⏰ ':'')+esc(dateLabel)+'</span></td>';
-    h+='<td>';
-    h+='<div style="display:flex;gap:4px">';
-    h+='<button class="btn btn-xs" onclick="openPanel(\''+v.id+'\');A.tab=\'list\';render()" title="Ubah jadwal">✏</button>';
-    h+='<button class="btn btn-xs" style="color:var(--red)" onclick="doUnschedule(\''+v.id+'\')" title="Hapus jadwal">✕</button>';
-    h+='</div>';
-    h+='</td>';
-    h+='</tr>';
+    h+='<span class="ptitle" style="max-width:180px" title="'+esc(title)+'">'+esc(title)+'</span></div></td>';
+    h+='<td><span class="badge '+(isSn?'b-soon':'b-sched')+'" style="font-size:11px">'+(isSn?'⏰ ':'')+esc(fmtDate(iso))+'</span></td>';
+    h+='<td><div style="display:flex;gap:4px">'+
+      '<button class="btn btn-xs" onclick="openPanel(\''+v.id+'\');A.tab=\'list\';render()" title="Ubah jadwal">✏</button>'+
+      '<button class="btn btn-xs" style="color:var(--red)" onclick="doUnschedule(\''+v.id+'\')" title="Hapus jadwal">✕</button>'+
+    '</div></td></tr>';
   });
   h+='</tbody></table></div>';
-
-  // Bulk unschedule all
   h+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">';
   h+='<button class="btn btn-sm" style="color:var(--red);border-color:var(--red-b)" onclick="confirmUnscheduleAll()">✕ Hapus Semua Jadwal</button>';
   h+='</div>';
@@ -1093,10 +1191,8 @@ function renderBulkUnsched(unscheduled,b){
   var selCount=b.selected.length;
   var h='<div class="bulk-wrap">';
 
-  // LEFT: settings
-  var left='<div class="panel">';
-  left+='<div class="panel-head">⚙️ Pengaturan Jadwal Massal</div>';
-  left+='<div class="panel-body">';
+  // LEFT
+  var left='<div class="panel"><div class="panel-head">⚙️ Pengaturan Jadwal Massal</div><div class="panel-body">';
   left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:8px">Mode Penjadwalan</div>';
   left+='<div class="mode-opts">';
   left+='<label class="mode-opt'+(b.mode==='interval'?' selected':'')+'"><input type="radio" name="bmode" value="interval" onchange="setMode(\'interval\')" '+(b.mode==='interval'?'checked':'')+'>'+
@@ -1109,7 +1205,7 @@ function renderBulkUnsched(unscheduled,b){
     left+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);margin-bottom:7px">Interval</div>';
     left+='<div class="interval-row">';
     [1,2,3,7].forEach(function(n){
-      left+='<button class="interval-btn'+(b.interval===n?' sel':'')+'" onclick="setInterval2('+n+')">'+(n===1?'Tiap Hari':n===7?'Tiap Minggu':n+' Hari Sekali')+'</button>';
+      left+='<button class="interval-btn'+(b.interval===n?' sel':'')+'" onclick="setInterval2('+n+')">'+(n===1?'Tiap Hari':n===7?'Tiap Minggu':n+' Hari')+'</button>';
     });
     left+='<div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t2)">Custom:<input class="custom-n" type="number" min="1" max="365" value="'+b.customN+'" oninput="A.bulk.customN=parseInt(this.value)||1" id="b-custn">'+
       '<button class="btn btn-xs" onclick="setInterval2(parseInt(val(\'b-custn\'))||1)">OK</button></div>';
@@ -1118,26 +1214,21 @@ function renderBulkUnsched(unscheduled,b){
   left+='<div class="fg" style="margin-top:12px"><label>Jam Publish — '+tzLabel()+' (waktu lokal)</label><input type="time" id="b-time" value="'+esc(b.time)+'" oninput="A.bulk.time=this.value"></div>';
   left+='</div></div>';
 
-  // RIGHT: video selection + preview
+  // RIGHT
   var right='<div>';
   right+='<div class="panel" style="margin-bottom:12px">';
-  right+='<div class="panel-head">📋 Pilih Video yang Akan Dijadwalkan '+
-    '<button class="btn btn-xs btn-ghost" onclick="selectAllBulk()">'+(selCount===unscheduled.length&&unscheduled.length>0?'Batal Semua':'Pilih Semua')+'</button></div>';
+  right+='<div class="panel-head">📋 Pilih Video <button class="btn btn-xs btn-ghost" onclick="selectAllBulk()">'+(selCount===unscheduled.length&&unscheduled.length>0?'Batal Semua':'Pilih Semua')+'</button></div>';
   right+='<div class="panel-body" style="padding:10px">';
-
   if(!unscheduled.length){
-    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Semua draft sudah terjadwal! 🎉</p>'+
-      '<p style="font-size:12px;color:var(--t3);margin-top:6px">Lihat tab <b>Sudah Terjadwal</b> untuk kelola jadwal yang ada.</p></div>';
+    right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Semua draft sudah terjadwal! 🎉</p></div>';
   }else{
-    right+='<div class="info-blue" style="font-size:11px;margin-bottom:8px">💡 Hanya video <b>belum dijadwalkan</b> yang tampil di sini. Urutan = urutan tanggal publish. Atur dengan ↑↓.</div>';
+    right+='<div class="info-blue" style="font-size:11px;margin-bottom:8px">💡 Hanya video belum dijadwalkan. Atur urutan dengan ↑↓.</div>';
     right+='<div class="sel-list">';
     var selSet=new Set(b.selected);
-    // Only show unscheduled videos
     var orderedSel=b.selected.filter(function(id){return unscheduled.find(function(v){return v.id===id})});
     var orderedList=orderedSel.map(function(id){return A.videos.find(function(v){return v.id===id})}).filter(Boolean);
     var unsel=unscheduled.filter(function(v){return!selSet.has(v.id)});
     var allInOrder=orderedList.concat(unsel);
-
     allInOrder.forEach(function(v){
       var checked=selSet.has(v.id);
       var thumb=getThumb(v),title=getTitle(v);
@@ -1159,9 +1250,8 @@ function renderBulkUnsched(unscheduled,b){
   }
   right+='</div></div>';
 
-  // Preview panel
   right+='<div class="panel">';
-  right+='<div class="panel-head">👁 Preview Jadwal <span style="font-size:11px;color:var(--t3);font-weight:500">'+selCount+' video dipilih</span></div>';
+  right+='<div class="panel-head">👁 Preview Jadwal <span style="font-size:11px;color:var(--t3);font-weight:500">'+selCount+' video</span></div>';
   right+='<div class="panel-body">';
   if(!selCount){
     right+='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Pilih video di atas untuk melihat preview.</p></div>';
@@ -1174,9 +1264,9 @@ function renderBulkUnsched(unscheduled,b){
       right+='<tr><td class="pnum">'+(i+1)+'</td><td class="ptitle">'+esc(getTitle(v))+'</td><td class="pdate">'+esc(fmtShort(dateStr))+'</td></tr>';
     });
     right+='</tbody></table></div>';
-    right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video dijadwalkan mulai <b>'+esc(fmtShort(startVal))+'</b>, setiap <b>'+b.interval+' hari</b>, jam <b>'+(b.time||'00:00')+' '+tzLabel()+'</b></div>';
+    right+='<div class="info-green" style="margin-top:10px;font-size:11px">✓ '+selCount+' video mulai <b>'+esc(fmtShort(startVal))+'</b>, setiap <b>'+b.interval+' hari</b>, jam <b>'+(b.time||'00:00')+' '+tzLabel()+'</b></div>';
   }else{
-    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal masing-masing video. Jam: <b id="b-time-label">'+(b.time||'00:00')+'</b> '+tzLabel()+'</div>';
+    right+='<div style="font-size:11px;color:var(--t2);margin-bottom:8px">Pilih tanggal masing-masing video. Jam: <b>'+(b.time||'00:00')+'</b> '+tzLabel()+'</div>';
     right+='<div style="overflow-x:auto"><table class="ptable"><thead><tr><th class="pnum">#</th><th>Video</th><th>Tanggal</th></tr></thead><tbody>';
     b.selected.forEach(function(id,i){
       var v=A.videos.find(function(x){return x.id===id});if(!v)return;
@@ -1199,23 +1289,7 @@ function renderBulkUnsched(unscheduled,b){
   return h;
 }
 
-async function confirmUnscheduleAll(){
-  var scheduled=getDrafts().filter(function(v){return!!A.scheduled[v.id]});
-  if(!scheduled.length)return;
-  if(!confirm('Hapus jadwal untuk SEMUA '+scheduled.length+' video? Tindakan ini tidak bisa dibatalkan.'))return;
-  var ok=0;
-  for(var i=0;i<scheduled.length;i++){
-    try{await apiUnset(scheduled[i].id);delete A.scheduled[scheduled[i].id];ok++;}catch(e){}
-  }
-  saveSched();toast(ok+' jadwal berhasil dihapus','inf');render();
-}
-
-
-function buildIntervalPreview(){return[]}
-function buildCustomPreviewRows(){return[]}
-
 function saveBulkValues(){
-  // Sync all form values before applying
   A.bulk.startDate=val('b-start')||A.bulk.startDate||tomorrow();
   A.bulk.time=val('b-time')||A.bulk.time;
   if(A.bulk.mode==='custom'){
@@ -1224,7 +1298,9 @@ function saveBulkValues(){
   applyBulk();
 }
 
-/* Calendar tab */
+/* ─────────────────────────────────────────────────────────────
+   CALENDAR TAB
+───────────────────────────────────────────────────────────── */
 function renderCalendar(){
   var MONTHS=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   var DAYS=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
@@ -1249,17 +1325,20 @@ function renderCalendar(){
     else if(i>=sd+dim){day=i-sd-dim+1;off=true;}
     else day=i-sd+1;
     var isT=!off&&day===td.getDate()&&m===td.getMonth()&&y===td.getFullYear();
-    var evs=off?[]:(ev[day]||[]);  // sel abu-abu (overflow) tidak pernah tampilkan event
+    var evs=off?[]:(ev[day]||[]);
     h+='<div class="cal-cell'+(off?' dim':'')+(isT?' today':'')+'"><div class="cal-num">'+day+'</div>';
     evs.slice(0,2).forEach(function(v){var t=getTitle(v);h+='<div class="cal-ev" title="'+esc(t)+'">'+esc(t.length>16?t.slice(0,14)+'…':t)+'</div>';});
-    if(evs.length>2)h+='<div class="cal-more">+' +(evs.length-2)+' lagi</div>';
+    if(evs.length>2)h+='<div class="cal-more">+'+(evs.length-2)+' lagi</div>';
     h+='</div>';
   }
   return h+'</div>';
 }
 
+/* ─────────────────────────────────────────────────────────────
+   DASHBOARD
+───────────────────────────────────────────────────────────── */
 function renderDashboard(){
-  var h=renderChBar()+renderStats();
+  var h=renderChBar()+renderQuotaBar()+renderStats();
   h+='<div class="tabs">'+
     '<button class="tab'+(A.tab==='list'?' active':'')+'" onclick="A.tab=\'list\';A.openPanel=null;render()">📋 Per Video</button>'+
     '<button class="tab'+(A.tab==='bulk'?' active':'')+'" onclick="A.tab=\'bulk\';A.openPanel=null;render()">🚀 Jadwal Massal</button>'+
@@ -1271,11 +1350,14 @@ function renderDashboard(){
   return h;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   ADD CHANNEL MODAL
+───────────────────────────────────────────────────────────── */
 function renderAddChModal(){
   var sw=COLORS.map(function(c){return'<div class="cswatch'+(A.newCh.color===c?' sel':'')+'" style="background:'+c+'" onclick="A.newCh.color=\''+c+'\';render()"></div>';}).join('');
   var cidField=getClientIds().length>0
-    ? '<div class="info-blue" style="font-size:12px;margin-bottom:10px">✓ Menggunakan Client ID dari config file.</div>'
-    : '<div class="fg"><label>OAuth Client ID</label><input id="nc-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(A.newCh.cid)+'"></div>';
+    ?'<div class="info-blue" style="font-size:12px;margin-bottom:10px">✓ Menggunakan Client ID dari config file.</div>'
+    :'<div class="fg"><label>OAuth Client ID</label><input id="nc-cid" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" value="'+esc(A.newCh.cid)+'"></div>';
   return'<div class="overlay" onclick="if(event.target===this){A.modal=null;render()}">'+
     '<div class="modal"><h3>➕ Tambah Channel Baru</h3>'+
     '<div class="fg"><label>Nama Channel</label><input id="nc-name" type="text" placeholder="Channel Gaming" value="'+esc(A.newCh.name)+'"></div>'+
@@ -1286,6 +1368,9 @@ function renderAddChModal(){
     '</div></div>';
 }
 
+/* ─────────────────────────────────────────────────────────────
+   MAIN RENDER
+───────────────────────────────────────────────────────────── */
 function render(){
   var root=$('root');if(!root)return;
   var h='';
@@ -1298,10 +1383,12 @@ function render(){
   root.innerHTML=h;renderHeader();
 }
 
-// Boot — if CONFIG has clientId and channels, skip setup screen
-A.channels = lsCh();
-if(A.channels.length && getClientIds().length){
-  A.step = 'setup'; // show channel selector, not blank setup
+/* ─────────────────────────────────────────────────────────────
+   BOOT
+───────────────────────────────────────────────────────────── */
+A.channels=lsCh();
+if(A.channels.length&&getClientIds().length){
+  A.step='setup';
 }
 render();
 </script>
